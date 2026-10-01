@@ -22,6 +22,9 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
     var selected by mutableStateOf(prefs.selected); private set
     var gpsPlace by mutableStateOf(prefs.gpsPlace); private set
 
+    var themeMode by mutableStateOf(prefs.themeMode); private set
+    var modern by mutableStateOf(prefs.modern); private set
+
     var forecast by mutableStateOf<Forecast?>(null); private set
     var loading by mutableStateOf(false); private set
     var error by mutableStateOf<String?>(null); private set
@@ -39,6 +42,7 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
         if (places.none { it.id == selected } && selected != GPS) selected = GPS
         needsPermission = selected == GPS && !Locate.hasPermission(app)
         loadCache()
+        currentCoords?.let { RadarWarmup.warm(it.first, it.second) }
     }
 
     val placeName: String
@@ -49,6 +53,16 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
     val currentCoords: Pair<Double, Double>?
         get() = if (selected == GPS) gpsPlace?.let { it.lat to it.lon }
         else places.firstOrNull { it.id == selected }?.let { it.lat to it.lon }
+
+    fun changeThemeMode(m: ThemeMode) {
+        prefs.themeMode = m
+        themeMode = m
+    }
+
+    fun changeModern(on: Boolean) {
+        prefs.modern = on
+        modern = on
+    }
 
     fun saveApiKey(key: String) {
         val k = key.trim()
@@ -146,6 +160,7 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
                 val parsed = withContext(Dispatchers.Default) { PirateWeather.parse(json, u, now) }
                 forecast = parsed
                 error = null
+                RadarWarmup.warm(coords.first, coords.second)
                 prefs.putCache(key, now, json.toString())
             } catch (e: CancellationException) {
                 throw e

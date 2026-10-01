@@ -51,6 +51,18 @@
     width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff;
     background: var(--accent); box-shadow: 0 0 0 1px rgba(0,0,0,0.3);
   }
+  body.amoled { --bg: #000000; --panel: rgba(14,14,14,0.95); }
+  /* Glass style: frosted, translucent panels with a bright hairline edge. */
+  body.glass .seg, body.glass .bar, body.glass .legend, body.glass .note {
+    background: rgba(255,255,255,0.55); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,0.75); box-shadow: 0 6px 18px rgba(30,58,100,0.18);
+  }
+  body.glass.dark .seg, body.glass.dark .bar, body.glass.dark .legend, body.glass.dark .note {
+    background: rgba(30,36,46,0.55); border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+  }
+  body.glass.amoled .seg, body.glass.amoled .bar, body.glass.amoled .legend, body.glass.amoled .note {
+    background: rgba(20,20,20,0.6);
+  }
   .maplibregl-ctrl-attrib { font-size: 9px; }
 </style>
 </head>
@@ -72,19 +84,22 @@
 <script>
   // Tiles are fetched by the app (same origin) to avoid cross-site restrictions in the WebView.
   var PROXY = 'https://appassets.androidplatform.net';
-  var OPACITY = 1.0;   // tiles carry their own transparency
-  var map = null, ready = false, pendingInit = undefined, dark = false;
-  var frames = [], nowIdx = 0, satellite = false, labelPaint = {};
+  var OPACITY = 1.0;        // tiles carry their own transparency
+  var MIN_PER_SEC = 25;     // minutes of weather shown per second of playback
+  var map = null, ready = false, dark = false, satellite = false, labelPaint = {};
+  var frames = [], nowIdx = 0, pendingForecast, haveForecast = false, layerSeq = 0;
 
-  function init(lat, lon, isDark) {
+  function init(lat, lon, isDark, isAmoled, isGlass) {
     dark = !!isDark;
     if (dark) document.body.classList.add('dark');
+    if (isAmoled) document.body.classList.add('amoled');
+    if (isGlass) document.body.classList.add('glass');
     try {
       map = new maplibregl.Map({
         container: 'map',
         style: 'https://tiles.openfreemap.org/styles/' + (dark ? 'dark' : 'positron'),
         center: [lon, lat], zoom: 6.3, minZoom: 3, maxZoom: 11,
-        dragRotate: false, pitchWithRotate: false,
+        dragRotate: false, pitchWithRotate: false, fadeDuration: 0,
         attributionControl: { compact: true, customAttribution: 'Radar: NWS NEXRAD, NOAA HRRR via Iowa Environmental Mesonet' }
       });
     } catch (e) { showError('This phone could not start the map (' + e.message + ').'); return; }
@@ -94,7 +109,8 @@
     map.on('load', function () {
       ready = true;
       if (!dark) mutedBase();
-      if (pendingInit !== undefined) { var p = pendingInit; pendingInit = undefined; setTimeline(p); }
+      buildObserved();
+      if (pendingForecast !== undefined) { var p = pendingForecast; pendingForecast = undefined; setForecast(p); }
     });
     window.addEventListener('resize', function () { map.resize(); });
     setTimeout(function () { map.resize(); }, 300);
@@ -133,57 +149,70 @@
       pad(d.getUTCHours(), 2) + pad(d.getUTCMinutes(), 2);
   }
 
-  // Past hour of observed radar, "now", then up to 3 hours of HRRR forecast radar.
-  // hrrrInit: ISO time of the newest HRRR run (from the app), or null for observed-only.
-  function setTimeline(hrrrInit) {
-    if (!map) return;
-    if (!ready) { pendingInit = hrrrInit; return; }
+  function addLayer(f, visible) {
+    f.id = 'rv' + (layerSeq++);
+    // tileSize 128 asks for one zoom level deeper, so tiles stay crisp on high-density screens.
+    map.addSource(f.id, { type: 'raster', tileSize: 128, maxzoom: 10,
+      tiles: [PROXY + '/iem/' + f.layer + '/{z}/{x}/{y}.png'] });
+    map.addLayer({ id: f.id, type: 'raster', source: f.id,
+      paint: {
+        'raster-opacity': visible ? OPACITY : 0.001,
+        'raster-opacity-transition': { duration: 0, delay: 0 },
+        'raster-fade-duration': 0,
+        'raster-resampling': 'linear'
+      } }, firstLabelLayer());
+    shown[f.id] = visible ? OPACITY : 0.001;
+  }
+
+  // Run fn once the map has finished loading what's on screen (so "now" wins the bandwidth race).
+  function whenSettled(fn) {
+    if (map.areTilesLoaded()) setTimeout(fn, 0); else map.once('idle', fn);
+  }
+
+  // Latest radar first, alone, so it appears as fast as possible; then the past hour behind it.
+  function buildObserved() {
     var MIN = 60000, now = Date.now();
-    var list = [];
     var base = Math.floor((now - 5 * MIN) / (5 * MIN)) * 5 * MIN;   // newest composite that should exist
+    var past = [];
     for (var k = 12; k >= 1; k--) {
       var t = base - k * 5 * MIN;
-      list.push({ t: t, kind: 'past', layer: 'ridge::USCOMP-N0Q-' + stamp(new Date(t)) });
+      past.push({ t: t, kind: 'past', layer: 'ridge::USCOMP-N0Q-' + stamp(new Date(t)) });
     }
-    list.push({ t: now, kind: 'now', layer: 'ridge::USCOMP-N0Q-0' });
+    var nowFrame = { t: now, kind: 'now', layer: 'ridge::USCOMP-N0Q-0' };
+    addLayer(nowFrame, true);
+    frames = past.concat([nowFrame]);
+    nowIdx = past.length;
+    refreshTimeline();
+    render(nowIdx);
+    whenSettled(function () { past.forEach(function (f) { addLayer(f, false); }); });
+  }
+
+  // Forecast frames (HRRR, 15-minute steps, up to 3 hours) are appended once the run time is known.
+  // hrrrInit: ISO time of the newest HRRR run, or null when unavailable.
+  function setForecast(hrrrInit) {
+    if (!ready) { pendingForecast = hrrrInit; return; }
+    if (haveForecast) return;
     var init = hrrrInit ? new Date(hrrrInit).getTime() : NaN;
-    if (isNaN(init)) hrrrInit = null;
-    if (hrrrInit) {
-      var first = Math.ceil((now + 10 * MIN) / (15 * MIN)) * 15 * MIN;
-      for (var v = first; v <= now + 180 * MIN; v += 15 * MIN) {
-        var f = Math.round((v - init) / MIN);
-        if (f < 0 || f > 1080) continue;
-        list.push({ t: v, kind: 'future', layer: 'hrrr::REFD-F' + pad(f, 4) + '-' + stamp(new Date(init)) });
-      }
+    if (isNaN(init)) { showError('Forecast radar is unavailable right now; showing observed radar only.'); return; }
+    haveForecast = true;
+    var MIN = 60000, now = frames[nowIdx].t, list = [];
+    var first = Math.ceil((now + 10 * MIN) / (15 * MIN)) * 15 * MIN;
+    for (var v = first; v <= now + 180 * MIN; v += 15 * MIN) {
+      var f = Math.round((v - init) / MIN);
+      if (f < 0 || f > 1080) continue;
+      list.push({ t: v, kind: 'future', layer: 'hrrr::REFD-F' + pad(f, 4) + '-' + stamp(new Date(init)) });
     }
-    frames.forEach(function (_, i) {
-      if (map.getLayer('rv' + i)) map.removeLayer('rv' + i);
-      if (map.getSource('rv' + i)) map.removeSource('rv' + i);
-    });
-    frames = list;
-    nowIdx = frames.findIndex(function (f) { return f.kind === 'now'; });
-    var before = firstLabelLayer();
-    frames.forEach(function (f, i) {
-      // tileSize 128 asks for one zoom level deeper, so tiles stay crisp on high-density screens.
-      map.addSource('rv' + i, {
-        type: 'raster', tileSize: 128, maxzoom: 10,
-        tiles: [PROXY + '/iem/' + f.layer + '/{z}/{x}/{y}.png']
-      });
-      map.addLayer({ id: 'rv' + i, type: 'raster', source: 'rv' + i,
-        paint: {
-          'raster-opacity': 0.001,
-          'raster-opacity-transition': { duration: 0, delay: 0 },
-          'raster-fade-duration': 0,
-          'raster-resampling': 'linear'
-        } }, before);
-    });
+    frames = frames.concat(list);
+    refreshTimeline();
+    render(pos);
+    whenSettled(function () { list.forEach(function (f) { addLayer(f, false); }); });
+  }
+
+  function refreshTimeline() {
     var slider = document.getElementById('slider');
     slider.max = frames.length - 1;
     slider.step = 0.01;
     drawTicks();
-    if (!hrrrInit) showError('Forecast radar is unavailable right now; showing observed radar only.');
-    shown = {};
-    render(nowIdx);
   }
 
   // One label per whole hour: the frame closest to -1 hr, Now, +1 hr, +2 hr, +3 hr.
@@ -198,7 +227,7 @@
         var err = Math.abs((f.t - nowT) / 3600000 - m.h);
         if (err < bestErr) { bestErr = err; best = i; }
       });
-      if (m.h !== 0 && bestErr > 0.2) return;   // that hour isn't covered by the timeline
+      if (m.h !== 0 && bestErr > 0.2) return;
       if (m.h === 0) best = nowIdx;
       var s = document.createElement('span');
       s.textContent = m.label; s.style.left = (best / n * 100) + '%';
@@ -210,13 +239,13 @@
   // Playback position is fractional: between two frames, both are drawn and crossfaded by the fraction,
   // so the radar dissolves continuously instead of jumping from frame to frame.
   var pos = 0, shown = {}, raf = null, lastTs = 0, holdUntil = 0;
-  var MIN_PER_SEC = 25;   // minutes of weather shown per second of playback
 
-  function setOpacity(i, v) {
+  function setOpacity(f, v) {
+    if (!f.id) return;   // layer not added yet
     v = Math.max(0.001, v);
-    if (shown[i] === v || !map.getLayer('rv' + i)) return;
-    shown[i] = v;
-    map.setPaintProperty('rv' + i, 'raster-opacity', v);
+    if (shown[f.id] === v || !map.getLayer(f.id)) return;
+    shown[f.id] = v;
+    map.setPaintProperty(f.id, 'raster-opacity', v);
   }
 
   function render(p) {
@@ -227,7 +256,7 @@
     if (i >= n) { i = n; f = 0; }
     for (var k = 0; k <= n; k++) {
       var v = k === i ? 1 - f : (k === i + 1 ? f : 0);
-      setOpacity(k, v * OPACITY);
+      setOpacity(frames[k], v * OPACITY);
     }
     document.getElementById('slider').value = pos;
     var a = frames[i], b = frames[Math.min(n, i + 1)];
@@ -279,12 +308,15 @@
         map.addSource('sat', { type: 'raster', tileSize: 256, maxzoom: 18,
           tiles: [PROXY + '/esri/{z}/{y}/{x}'], attribution: 'Imagery &copy; Esri' });
       }
-      var before = map.getLayer('rv0') ? 'rv0' : firstLabelLayer();
-      map.addLayer({ id: 'sat', type: 'raster', source: 'sat' }, before);
+      var firstRadar = frames.filter(function (f) { return f.id && map.getLayer(f.id); })[0];
+      map.addLayer({ id: 'sat', type: 'raster', source: 'sat' }, firstRadar ? firstRadar.id : firstLabelLayer());
+      // Keep satellite below every radar layer, including ones added later.
+      frames.forEach(function (f) { if (f.id && map.getLayer(f.id)) map.moveLayer(f.id, firstLabelLayer()); });
       symbols.forEach(function (l) {
         try {
           labelPaint[l.id] = [map.getPaintProperty(l.id, 'text-color'), map.getPaintProperty(l.id, 'text-halo-color')];
-          map.setPaintProperty(l.id, 'text-color', '#ffffff'); map.setPaintProperty(l.id, 'text-halo-color', 'rgba(0,0,0,0.7)'); } catch (e) {}
+          map.setPaintProperty(l.id, 'text-color', '#ffffff'); map.setPaintProperty(l.id, 'text-halo-color', 'rgba(0,0,0,0.7)');
+        } catch (e) {}
       });
     } else {
       if (map.getLayer('sat')) map.removeLayer('sat');

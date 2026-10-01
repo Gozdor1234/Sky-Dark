@@ -34,6 +34,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -189,8 +190,8 @@ fun SettingsScreen(vm: WeatherViewModel, onBack: () -> Unit) {
         SubBar("Settings", onBack)
         LazyColumn(
             Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(if (LocalModern.current) 18.dp else 12.dp),
         ) {
             item {
                 Panel {
@@ -221,6 +222,32 @@ fun SettingsScreen(vm: WeatherViewModel, onBack: () -> Unit) {
                         },
                         enabled = key.trim() != vm.apiKey && key.isNotBlank(),
                     ) { Text("Save key") }
+                }
+            }
+            item {
+                Panel {
+                    SectionTitle("Appearance")
+                    Text("Theme", fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    ChipRow {
+                        ThemeMode.entries.forEach { m ->
+                            Chip(m.label, vm.themeMode == m) { vm.changeThemeMode(m) }
+                        }
+                    }
+                    Text(
+                        "System follows your phone's light/dark setting. AMOLED is dark mode with pure black backgrounds.",
+                        fontSize = 13.sp,
+                        color = cs.onSurfaceVariant,
+                    )
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { vm.changeModern(!vm.modern) }.padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Modern style", fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                            Text("Glass panels with soft raised and pressed-in shadows", fontSize = 13.sp, color = cs.onSurfaceVariant)
+                        }
+                        Switch(checked = vm.modern, onCheckedChange = { vm.changeModern(it) })
+                    }
                 }
             }
             item {

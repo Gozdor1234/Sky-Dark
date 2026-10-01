@@ -10,7 +10,15 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,7 +34,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -43,7 +55,7 @@ class MainActivity : ComponentActivity() {
         }
         enableEdgeToEdge()
         setContent {
-            SkyTheme { App(vm) }
+            SkyTheme(vm.themeMode, vm.modern) { App(vm) }
         }
     }
 }
@@ -96,21 +108,55 @@ private fun App(vm: WeatherViewModel) {
 
 @Composable
 private fun BottomBar(current: Screen, onSelect: (Screen) -> Unit) {
-    NavigationBar(
-        containerColor = MaterialTheme.colorScheme.surface,
-        tonalElevation = 0.dp,
-        windowInsets = WindowInsets(0, 0, 0, 0),
-    ) {
-        listOf(
-            Triple(Screen.FORECAST, "Forecast", R.drawable.ic_nav_forecast),
-            Triple(Screen.RADAR, "Radar", R.drawable.ic_nav_radar),
-        ).forEach { (tab, label, icon) ->
-            NavigationBarItem(
-                selected = current == tab,
-                onClick = { onSelect(tab) },
-                icon = { Icon(painterResource(icon), contentDescription = null) },
-                label = { Text(label) },
-            )
+    val tabs = listOf(
+        Triple(Screen.FORECAST, "Forecast", R.drawable.ic_nav_forecast),
+        Triple(Screen.RADAR, "Radar", R.drawable.ic_nav_radar),
+    )
+    if (LocalModern.current) {
+        // Floating raised glass bar with the selected tab pressed in.
+        val p = modernPalette
+        val cs = MaterialTheme.colorScheme
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 10.dp)
+                .height(68.dp)
+                .neuRaised(p, 26.dp)
+                .padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            tabs.forEach { (tab, label, icon) ->
+                val sel = current == tab
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .then(if (sel) Modifier.neuInset(p, 18.dp) else Modifier)
+                        .clip(RoundedCornerShape(18.dp))
+                        .clickable { onSelect(tab) },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    val tint = if (sel) cs.primary else cs.onSurfaceVariant
+                    Icon(painterResource(icon), contentDescription = null, tint = tint)
+                    Text(label, fontSize = 12.sp, fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium, color = tint)
+                }
+            }
+        }
+    } else {
+        NavigationBar(
+            containerColor = MaterialTheme.colorScheme.surface,
+            tonalElevation = 0.dp,
+            windowInsets = WindowInsets(0, 0, 0, 0),
+        ) {
+            tabs.forEach { (tab, label, icon) ->
+                NavigationBarItem(
+                    selected = current == tab,
+                    onClick = { onSelect(tab) },
+                    icon = { Icon(painterResource(icon), contentDescription = null) },
+                    label = { Text(label) },
+                )
+            }
         }
     }
 }

@@ -103,7 +103,7 @@ fun ForecastScreen(
         LazyColumn(
             Modifier.fillMaxSize(),
             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(if (LocalModern.current) 16.dp else 12.dp),
         ) {
             if (vm.apiKey.isBlank()) {
                 item {
@@ -337,7 +337,8 @@ private fun DayDetail(f: Forecast, d: Day, metric: Metric) {
             Stat("Wind", if (d.wind.isNaN()) "--" else "${d.wind.roundToInt()} ${f.units.windUnit}")
             Stat("UV", if (d.uv.isNaN()) "--" else "${d.uv.roundToInt()}")
         }
-        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(cs.background).padding(10.dp)) {
+        val well = if (LocalModern.current) Modifier.neuInset(modernPalette, 12.dp) else Modifier.clip(RoundedCornerShape(12.dp)).background(cs.background)
+        Box(Modifier.fillMaxWidth().then(well).padding(10.dp)) {
             Timeline(f.hoursOn(d), f.zone, f.units, metric, startsNow = false)
         }
     }

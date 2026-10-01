@@ -45,6 +45,15 @@ class Prefs(ctx: Context) {
         get() = Units.from(sp.getString("units", null))
         set(v) = sp.edit().putString("units", v.code).apply()
 
+    var themeMode: ThemeMode
+        get() = ThemeMode.from(sp.getString("theme_mode", null))
+        set(v) = sp.edit().putString("theme_mode", v.key).apply()
+
+    /** Glass panels with soft raised/pressed shadows. Off = standard flat look. */
+    var modern: Boolean
+        get() = sp.getBoolean("modern_style", false)
+        set(v) = sp.edit().putBoolean("modern_style", v).apply()
+
     var selected: String
         get() = sp.getString("selected", GPS) ?: GPS
         set(v) = sp.edit().putString("selected", v).apply()

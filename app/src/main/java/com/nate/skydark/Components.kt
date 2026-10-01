@@ -73,27 +73,58 @@ enum class Metric(val label: String) {
 
 @Composable
 fun MetricChips(selected: Metric, onSelect: (Metric) -> Unit) {
+    ChipRow {
+        Metric.entries.forEach { m -> Chip(m.label, m == selected) { onSelect(m) } }
+    }
+}
+
+/** Horizontally scrolling row of chips, with room for Modern-style shadows. */
+@Composable
+fun ChipRow(content: @Composable () -> Unit) {
+    val modern = LocalModern.current
     Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Metric.entries.forEach { m ->
-            val on = m == selected
-            val cs = MaterialTheme.colorScheme
-            Box(
-                Modifier
-                    .clip(CircleShape)
-                    .background(if (on) cs.primary else cs.surfaceVariant)
-                    .clickable { onSelect(m) }
-                    .padding(horizontal = 14.dp, vertical = 7.dp),
-            ) {
-                Text(
-                    m.label,
-                    fontSize = 13.sp,
-                    fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (on) cs.onPrimary else cs.onSurfaceVariant,
-                )
-            }
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(vertical = if (modern) 6.dp else 0.dp, horizontal = if (modern) 4.dp else 0.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (modern) 10.dp else 8.dp),
+    ) { content() }
+}
+
+/** Pill toggle. Standard: filled accent when on. Modern: raised glass pill, pressed in (accent text) when on. */
+@Composable
+fun Chip(label: String, on: Boolean, onClick: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    if (LocalModern.current) {
+        val p = modernPalette
+        Box(
+            Modifier
+                .then(if (on) Modifier.neuInset(p, 18.dp) else Modifier.neuRaised(p, 18.dp, 3.dp, 6.dp))
+                .clip(CircleShape)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+        ) {
+            Text(
+                label,
+                fontSize = 13.sp,
+                fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
+                color = if (on) cs.primary else cs.onSurfaceVariant,
+            )
+        }
+    } else {
+        Box(
+            Modifier
+                .clip(CircleShape)
+                .background(if (on) cs.primary else cs.surfaceVariant)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 14.dp, vertical = 7.dp),
+        ) {
+            Text(
+                label,
+                fontSize = 13.sp,
+                fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (on) cs.onPrimary else cs.onSurfaceVariant,
+            )
         }
     }
 }
@@ -239,12 +270,15 @@ fun RangeBar(low: Double, high: Double, weekLow: Double, weekHigh: Double, units
 
 @Composable
 fun Panel(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    val shape = RoundedCornerShape(18.dp)
+    val surface = if (LocalModern.current) {
+        // Raised glass panel with soft shadows (Modern style)
+        Modifier.neuRaised(modernPalette, 18.dp).clip(shape)
+    } else {
+        Modifier.clip(shape).background(MaterialTheme.colorScheme.surface)
+    }
     Column(
-        modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(16.dp),
+        modifier.fillMaxWidth().then(surface).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) { content() }
 }

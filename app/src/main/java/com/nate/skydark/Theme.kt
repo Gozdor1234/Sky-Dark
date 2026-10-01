@@ -1,6 +1,16 @@
 package com.nate.skydark
 
+import android.graphics.Color as AndroidColor
+import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -35,9 +45,68 @@ private val Dark = darkColorScheme(
     error = Color(0xFFFF7B6E),
 )
 
+enum class ThemeMode(val key: String, val label: String) {
+    SYSTEM("system", "System"),
+    LIGHT("light", "Light"),
+    DARK("dark", "Dark"),
+    AMOLED("amoled", "AMOLED");
+
+    companion object {
+        fun from(key: String?): ThemeMode = entries.firstOrNull { it.key == key } ?: SYSTEM
+    }
+}
+
+/** What the current look resolved to, for code that can't read it from the color scheme (the radar page). */
+@Immutable
+data class Look(val dark: Boolean, val amoled: Boolean, val modern: Boolean)
+
+val LocalLook = staticCompositionLocalOf { Look(dark = false, amoled = false, modern = false) }
+
+/** Pure black page so OLED pixels switch off; cards stay just visible against it. */
+private fun ColorScheme.toAmoled(): ColorScheme = copy(
+    background = Color.Black,
+    surface = Color(0xFF0D0D0D),
+    surfaceVariant = Color(0xFF1A1A1A),
+    outlineVariant = Color(0xFF242424),
+)
+
 @Composable
-fun SkyTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = if (isSystemInDarkTheme()) Dark else Light, content = content)
+fun SkyTheme(mode: ThemeMode, modern: Boolean, content: @Composable () -> Unit) {
+    val dark = when (mode) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK, ThemeMode.AMOLED -> true
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    }
+    val amoled = mode == ThemeMode.AMOLED
+    var scheme = if (dark) Dark else Light
+    if (amoled) scheme = scheme.toAmoled()
+    // Glass panels need the page and the panel to share one tone so shadows and highlights read.
+    if (modern) {
+        val page = when {
+            amoled -> Color.Black
+            dark -> scheme.background
+            else -> ModernLightBackground
+        }
+        scheme = scheme.copy(background = page, surface = page)
+    }
+
+    // Status and navigation bar icons follow the app's own mode, not just the phone's.
+    val activity = LocalContext.current as? ComponentActivity
+    LaunchedEffect(dark, activity) {
+        activity?.enableEdgeToEdge(
+            statusBarStyle = if (dark) SystemBarStyle.dark(AndroidColor.TRANSPARENT)
+            else SystemBarStyle.light(AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT),
+            navigationBarStyle = if (dark) SystemBarStyle.dark(AndroidColor.TRANSPARENT)
+            else SystemBarStyle.light(AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT),
+        )
+    }
+
+    CompositionLocalProvider(
+        LocalLook provides Look(dark, amoled, modern),
+        LocalModern provides modern,
+    ) {
+        MaterialTheme(colorScheme = scheme, content = content)
+    }
 }
 
 object SkyColors {
