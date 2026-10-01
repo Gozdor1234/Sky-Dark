@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -25,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -97,8 +99,9 @@ fun MetricChips(selected: Metric, onSelect: (Metric) -> Unit) {
 }
 
 /**
- * Vertical hour-by-hour timeline: time labels, a condition bar split into colored runs,
- * and value pills whose horizontal position tracks the value (warmer/wetter sits further right).
+ * Hour-by-hour timeline. A slim condition bar runs down the left edge (one colored slice per hour),
+ * and each row covers two hours: time, the condition where it changes, and a value pill whose
+ * horizontal position tracks the value (warmer, wetter, windier sits further right).
  */
 @Composable
 fun Timeline(hours: List<Hour>, zone: ZoneId, units: Units, metric: Metric, startsNow: Boolean) {
@@ -107,85 +110,93 @@ fun Timeline(hours: List<Hour>, zone: ZoneId, units: Units, metric: Metric, star
         return
     }
     val cs = MaterialTheme.colorScheme
-    val rowH = 30.dp
-    val segs = segments(hours)
+    val hourH = 22.dp
+    val rowCount = (hours.size + 1) / 2
+    val skies = hours.map { it.sky() }
+    val starts = segments(hours).associateBy { it.start }
     val values = hours.map { metric.value(it) }
     val (lo, hi) = metric.range(values)
 
-    Row(Modifier.fillMaxWidth().height(rowH * hours.size)) {
-        // Hour labels, every other hour
-        Box(Modifier.width(48.dp).fillMaxHeight()) {
-            hours.forEachIndexed { i, h ->
-                if (i % 2 == 0) {
-                    Box(Modifier.offset(y = rowH * i).height(rowH), contentAlignment = Alignment.CenterStart) {
-                        Text(
-                            if (i == 0 && startsNow) "Now" else hourLabel(h.time, zone),
-                            fontSize = 12.sp,
-                            color = cs.onSurfaceVariant,
-                        )
-                    }
+    Row(Modifier.fillMaxWidth().height(hourH * (rowCount * 2))) {
+        // Slim condition bar: track color shows through for clear hours.
+        Box(
+            Modifier
+                .width(8.dp)
+                .height(hourH * hours.size)
+                .clip(RoundedCornerShape(4.dp))
+                .background(cs.surfaceVariant),
+        ) {
+            skies.forEachIndexed { i, sky ->
+                val fill = SkyColors.of(sky)
+                if (fill.alpha > 0f) {
+                    Box(Modifier.offset(y = hourH * i).height(hourH).fillMaxWidth().background(fill))
                 }
             }
         }
+        Spacer(Modifier.width(12.dp))
 
-        // Condition bar
-        Box(Modifier.width(118.dp).fillMaxHeight()) {
-            segs.forEach { s ->
-                val fill = SkyColors.of(s.sky)
-                val shape = RoundedCornerShape(6.dp)
-                Box(
-                    Modifier
-                        .offset(y = rowH * s.start)
-                        .height(rowH * s.length)
-                        .fillMaxWidth()
-                        .padding(vertical = 1.dp)
-                        .clip(shape)
-                        .background(fill)
-                        .then(if (s.sky == Sky.CLEAR) Modifier.border(1.dp, cs.outlineVariant, shape) else Modifier),
-                ) {
+        Column(Modifier.weight(1f)) {
+            for (r in 0 until rowCount) {
+                val i = r * 2
+                val h = hours[i]
+                // Name the condition on the row where it begins (either hour of the pair).
+                val label = starts[i]?.sky?.label ?: starts[i + 1]?.sky?.label
+                Row(Modifier.fillMaxWidth().height(hourH * 2), verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        s.sky.label,
-                        modifier = Modifier.padding(start = 8.dp, top = 6.dp, end = 4.dp),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = SkyColors.textOn(fill, cs.onSurfaceVariant),
+                        if (i == 0 && startsNow) "Now" else hourLabel(h.time, zone),
+                        modifier = Modifier.width(50.dp),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = cs.onSurface,
                     )
-                }
-            }
-        }
-
-        // Value pills
-        BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().padding(start = 10.dp)) {
-            val pillW = 62.dp
-            val track = (maxWidth - pillW).coerceAtLeast(0.dp)
-            hours.forEachIndexed { i, h ->
-                if (i % 2 == 0) {
-                    val v = values[i]
-                    val frac = if (hi > lo && !v.isNaN()) ((v - lo) / (hi - lo)).toFloat().coerceIn(0f, 1f) else 0f
-                    val tint = if (metric == Metric.TEMP || metric == Metric.FEELS) {
-                        SkyColors.temp(toFahrenheit(v, units)).copy(alpha = 0.28f)
-                    } else {
-                        cs.surfaceVariant
+                    Box(Modifier.width(96.dp)) {
+                        if (label != null) {
+                            Text(
+                                label,
+                                fontSize = 12.sp,
+                                fontStyle = FontStyle.Italic,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = cs.onSurfaceVariant,
+                            )
+                        }
                     }
-                    Box(
-                        Modifier.offset(x = track * frac, y = rowH * i).width(pillW).height(rowH),
-                        contentAlignment = Alignment.Center,
-                    ) {
+                    BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
+                        val pillW = 58.dp
+                        val track = (maxWidth - pillW).coerceAtLeast(0.dp)
+                        val v = values[i]
+                        val frac = if (hi > lo && !v.isNaN()) ((v - lo) / (hi - lo)).toFloat().coerceIn(0f, 1f) else 0f
+                        val tint = if (metric == Metric.TEMP || metric == Metric.FEELS) {
+                            SkyColors.temp(toFahrenheit(v, units)).copy(alpha = 0.25f)
+                        } else {
+                            cs.surfaceVariant
+                        }
+                        // Thin guide line leading to the pill
                         Box(
                             Modifier
-                                .clip(CircleShape)
-                                .background(tint)
-                                .padding(horizontal = 8.dp, vertical = 3.dp),
+                                .align(Alignment.CenterStart)
+                                .width(track * frac + 10.dp)
+                                .height(1.dp)
+                                .background(cs.outlineVariant),
+                        )
+                        Box(
+                            Modifier.offset(x = track * frac).width(pillW).fillMaxHeight(),
+                            contentAlignment = Alignment.Center,
                         ) {
-                            Text(
-                                metric.format(v, units),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 1,
-                                color = cs.onSurface,
-                            )
+                            Box(
+                                Modifier
+                                    .clip(CircleShape)
+                                    .background(tint)
+                                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                            ) {
+                                Text(
+                                    metric.format(v, units),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    color = cs.onSurface,
+                                )
+                            }
                         }
                     }
                 }

@@ -10,9 +10,15 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Text
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -20,6 +26,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 
 class MainActivity : ComponentActivity() {
@@ -34,7 +42,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen { FORECAST, LOCATIONS, SETTINGS }
+private enum class Screen { FORECAST, RADAR, LOCATIONS, SETTINGS }
 
 @Composable
 private fun App(vm: WeatherViewModel) {
@@ -55,21 +63,48 @@ private fun App(vm: WeatherViewModel) {
     BackHandler(enabled = screen != Screen.FORECAST) { screen = Screen.FORECAST }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Box(Modifier.fillMaxSize().systemBarsPadding()) {
-            when (screen) {
-                Screen.FORECAST -> ForecastScreen(
-                    vm,
-                    onLocations = { screen = Screen.LOCATIONS },
-                    onSettings = { screen = Screen.SETTINGS },
-                    onRequestPermission = requestPermission,
-                )
-                Screen.LOCATIONS -> LocationsScreen(
-                    vm,
-                    onBack = { screen = Screen.FORECAST },
-                    onRequestPermission = requestPermission,
-                )
-                Screen.SETTINGS -> SettingsScreen(vm, onBack = { screen = Screen.FORECAST })
+        Column(Modifier.fillMaxSize().systemBarsPadding()) {
+            Box(Modifier.weight(1f)) {
+                when (screen) {
+                    Screen.FORECAST -> ForecastScreen(
+                        vm,
+                        onLocations = { screen = Screen.LOCATIONS },
+                        onSettings = { screen = Screen.SETTINGS },
+                        onRequestPermission = requestPermission,
+                    )
+                    Screen.RADAR -> RadarScreen(vm)
+                    Screen.LOCATIONS -> LocationsScreen(
+                        vm,
+                        onBack = { screen = Screen.FORECAST },
+                        onRequestPermission = requestPermission,
+                    )
+                    Screen.SETTINGS -> SettingsScreen(vm, onBack = { screen = Screen.FORECAST })
+                }
             }
+            if (screen == Screen.FORECAST || screen == Screen.RADAR) {
+                BottomBar(screen) { screen = it }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BottomBar(current: Screen, onSelect: (Screen) -> Unit) {
+    NavigationBar(
+        containerColor = MaterialTheme.colorScheme.surface,
+        tonalElevation = 0.dp,
+        windowInsets = WindowInsets(0, 0, 0, 0),
+    ) {
+        listOf(
+            Triple(Screen.FORECAST, "Forecast", R.drawable.ic_nav_forecast),
+            Triple(Screen.RADAR, "Radar", R.drawable.ic_nav_radar),
+        ).forEach { (tab, label, icon) ->
+            NavigationBarItem(
+                selected = current == tab,
+                onClick = { onSelect(tab) },
+                icon = { Icon(painterResource(icon), contentDescription = null) },
+                label = { Text(label) },
+            )
         }
     }
 }

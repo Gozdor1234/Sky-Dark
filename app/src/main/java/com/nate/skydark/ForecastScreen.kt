@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -177,25 +178,27 @@ private fun Hero(f: Forecast) {
     val c = f.current
     val today = f.daily.firstOrNull()
     val cs = MaterialTheme.colorScheme
-    Column(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            WeatherIcon(c.icon, Modifier.size(84.dp), bg = cs.background)
-            Spacer(Modifier.width(18.dp))
+            WeatherIcon(c.icon, Modifier.size(78.dp), bg = cs.background)
+            Spacer(Modifier.width(14.dp))
             Column {
-                Text(deg(c.temp), fontSize = 68.sp, lineHeight = 70.sp, fontWeight = FontWeight.Light)
-                Text(c.summary.ifBlank { c.sky().label }, fontSize = 20.sp, fontWeight = FontWeight.Medium)
+                Text(deg(c.temp), fontSize = 64.sp, lineHeight = 64.sp, fontWeight = FontWeight.Light)
+                Text("Feels ${deg(c.feels)}", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = cs.onSurfaceVariant)
             }
         }
-        val parts = buildList {
-            add("Feels like ${deg(c.feels)}")
-            if (today != null) {
-                add("High ${deg(today.high)}")
-                add("Low ${deg(today.low)}")
-            }
+        Text(c.summary.ifBlank { c.sky().label }, fontSize = 18.sp, fontWeight = FontWeight.Medium)
+        if (today != null) {
+            Text("High ${deg(today.high)}   Low ${deg(today.low)}", fontSize = 13.sp, color = cs.onSurfaceVariant)
         }
-        Text(parts.joinToString("   "), fontSize = 14.sp, color = cs.onSurfaceVariant)
         val line = headline(f.upcoming(24), f.zone)
-        if (line.isNotBlank()) Text(line, fontSize = 16.sp)
+        if (line.isNotBlank()) {
+            Text(line, fontSize = 15.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
+        }
     }
 }
 
@@ -391,7 +394,7 @@ private fun Details(f: Forecast) {
 @Composable
 private fun Credits() {
     Text(
-        "Forecasts from Pirate Weather. Place search from Open-Meteo (GeoNames data).",
+        "Forecasts from Pirate Weather. Radar from RainViewer. Place search from Open-Meteo (GeoNames data).",
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
         fontSize = 11.sp,
         color = MaterialTheme.colorScheme.onSurfaceVariant,

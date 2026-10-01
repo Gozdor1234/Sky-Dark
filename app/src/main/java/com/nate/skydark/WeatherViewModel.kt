@@ -45,6 +45,11 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
         get() = if (selected == GPS) gpsPlace?.name ?: "Current Location"
         else places.firstOrNull { it.id == selected }?.name ?: "Unknown place"
 
+    /** Coordinates of the selected place (last GPS fix for "Current Location"), if known. */
+    val currentCoords: Pair<Double, Double>?
+        get() = if (selected == GPS) gpsPlace?.let { it.lat to it.lon }
+        else places.firstOrNull { it.id == selected }?.let { it.lat to it.lon }
+
     fun saveApiKey(key: String) {
         val k = key.trim()
         prefs.apiKey = k
