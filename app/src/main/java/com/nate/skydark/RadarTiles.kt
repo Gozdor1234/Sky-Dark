@@ -159,6 +159,34 @@ object RadarWarmup {
         return fresh ?: cached
     }
 
+    private const val LATEST_SCAN = "https://mesonet.agron.iastate.edu/data/gis/images/4326/USCOMP/n0q_0.json"
+    @Volatile private var latest: String? = null
+    @Volatile private var latestFetchedAt = 0L
+
+    /**
+     * Valid time (ISO, UTC) of the newest finished national radar mosaic, cached for 2 minutes.
+     * The page asks for that exact scan by its timestamp: the server's "latest" alias could hand back
+     * tiles from different scans, some of them blank while a new one was still being drawn.
+     */
+    suspend fun latestScan(): String? {
+        val cached = latest
+        if (cached != null && System.currentTimeMillis() - latestFetchedAt < 2 * 60_000) return cached
+        val fresh = runCatching {
+            Net.getJson(LATEST_SCAN).optJSONObject("meta")?.text("valid")?.ifBlank { null }
+        }.getOrNull()
+        if (fresh != null) {
+            latest = fresh
+            latestFetchedAt = System.currentTimeMillis()
+        }
+        return fresh ?: cached
+    }
+
+    /** "2026-10-01T17:55:00Z" -> "ridge::USCOMP-N0Q-202610011755" (the page builds the same name). */
+    private fun scanLayer(iso: String?): String {
+        val d = iso?.filter { it.isDigit() }?.take(12)
+        return if (d != null && d.length == 12) "ridge::USCOMP-N0Q-$d" else "ridge::USCOMP-N0Q-0"
+    }
+
     /**
      * Matches radar.html: it opens at map zoom 6.3 and builds each frame from intensity tiles at
      * round(zoom + 1.5) = zoom 8.
@@ -170,6 +198,7 @@ object RadarWarmup {
         lastWarm = Triple(lat, lon, now)
         scope.launch {
             launch { hrrrInit() }
+            val layer = scanLayer(latestScan())
             val z = 8
             val n = 1 shl z
             val cx = floor((lon + 180.0) / 360.0 * n).toInt()
@@ -180,7 +209,7 @@ object RadarWarmup {
                 .filter { (x, y) -> y in 0 until n }
                 .map { (x, y) ->
                     val wx = ((x % n) + n) % n
-                    async { gate.withPermit { TileProxy.warm("/iemv/ridge::USCOMP-N0Q-0/$z/$wx/$y.png") } }
+                    async { gate.withPermit { TileProxy.warm("/iemv/$layer/$z/$wx/$y.png") } }
                 }
                 .awaitAll()
         }

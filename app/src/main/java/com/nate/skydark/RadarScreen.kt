@@ -128,8 +128,10 @@ private object RadarWebHolder {
                 }
 
                 override fun onPageFinished(view: WebView, url: String?) {
-                    view.evaluateJavascript("init($lat, $lon, $dark, $amoled, $glass)", null)
                     RadarWarmup.main.launch {
+                        val scan = RadarWarmup.latestScan()
+                        val scanArg = if (scan == null) "null" else JSONObject.quote(scan)
+                        view.evaluateJavascript("init($lat, $lon, $dark, $amoled, $glass, $scanArg)", null)
                         val init = RadarWarmup.hrrrInit()
                         val arg = if (init == null) "null" else JSONObject.quote(init)
                         view.evaluateJavascript("setForecast($arg)", null)

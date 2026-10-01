@@ -93,7 +93,10 @@
   var frames = [], nowIdx = 0, pendingForecast, haveForecast = false;
   var pos = 0, raf = null, lastTs = 0, holdUntil = 0, waitSince = 0;
 
-  function init(lat, lon, isDark, isAmoled, isGlass) {
+  var latestScan = null;   // ISO valid time of the newest finished mosaic, from the app
+
+  function init(lat, lon, isDark, isAmoled, isGlass, scan) {
+    latestScan = scan || null;
     dark = !!isDark;
     if (dark) document.body.classList.add('dark');
     if (isAmoled) document.body.classList.add('amoled');
@@ -161,13 +164,21 @@
   // Past hour every 5 min, the latest scan, then HRRR forecast every 15 min out to 3 hours.
   function buildObserved() {
     var MIN = 60000, now = Date.now();
-    var base = Math.floor((now - 5 * MIN) / (5 * MIN)) * 5 * MIN;   // newest composite that should exist
+    var scanT = latestScan ? new Date(latestScan).getTime() : NaN;
+    var nowFrame;
+    if (!isNaN(scanT) && now - scanT < 60 * MIN) {
+      // The newest finished scan, asked for by its own timestamp so every tile matches.
+      nowFrame = { t: scanT, kind: 'now', layer: 'ridge::USCOMP-N0Q-' + stamp(new Date(scanT)) };
+    } else {
+      scanT = Math.floor((now - 10 * MIN) / (5 * MIN)) * 5 * MIN;   // a scan that should be finished by now
+      nowFrame = { t: scanT, kind: 'now', layer: 'ridge::USCOMP-N0Q-' + stamp(new Date(scanT)) };
+    }
     var past = [];
     for (var k = 12; k >= 1; k--) {
-      var t = base - k * 5 * MIN;
+      var t = scanT - k * 5 * MIN;
       past.push({ t: t, kind: 'past', layer: 'ridge::USCOMP-N0Q-' + stamp(new Date(t)) });
     }
-    frames = past.concat([{ t: now, kind: 'now', layer: 'ridge::USCOMP-N0Q-0' }]);
+    frames = past.concat([nowFrame]);
     nowIdx = past.length;
     refreshTimeline();
     render(nowIdx);
