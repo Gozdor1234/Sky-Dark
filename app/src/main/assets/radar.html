@@ -65,6 +65,9 @@
       radius: 7, color: '#ffffff', weight: 2, fillColor: dark ? '#86b4ff' : '#2e6bd1', fillOpacity: 1
     }).addTo(map);
     pin.bringToFront();
+    // The WebView can report its final size after the page loads; re-measure so tiles fill the view.
+    setTimeout(function () { map.invalidateSize(); }, 250);
+    window.addEventListener('resize', function () { map.invalidateSize(); });
   }
 
   // host + list of {time, path} from RainViewer's weather-maps.json, oldest first.

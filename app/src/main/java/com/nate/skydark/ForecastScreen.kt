@@ -180,7 +180,6 @@ private fun Hero(f: Forecast) {
     val cs = MaterialTheme.colorScheme
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -197,7 +196,7 @@ private fun Hero(f: Forecast) {
         }
         val line = headline(f.upcoming(24), f.zone)
         if (line.isNotBlank()) {
-            Text(line, fontSize = 15.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp))
+            Text(line, fontSize = 15.sp, modifier = Modifier.padding(top = 4.dp))
         }
     }
 }

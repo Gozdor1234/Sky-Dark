@@ -1,6 +1,7 @@
 package com.nate.skydark
 
 import android.annotation.SuppressLint
+import android.view.ViewGroup
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -64,6 +65,11 @@ fun RadarScreen(vm: WeatherViewModel) {
                 modifier = Modifier.fillMaxSize(),
                 factory = { ctx ->
                     WebView(ctx).apply {
+                        // Without explicit MATCH_PARENT the page sees a zero/unbounded viewport and the map never draws.
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                        )
                         setBackgroundColor(bg)
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
