@@ -2,6 +2,8 @@ package com.nate.skydark
 
 import android.annotation.SuppressLint
 import android.view.ViewGroup
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -22,6 +24,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.webkit.WebViewAssetLoader
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
@@ -29,7 +32,7 @@ import org.json.JSONObject
 private const val RAINVIEWER_MAPS = "https://api.rainviewer.com/public/weather-maps.json"
 
 /**
- * Radar map: a Leaflet page bundled in assets (radar.html) inside a WebView. The app fetches the
+ * Radar map: a MapLibre page bundled in assets (radar.html) inside a WebView. The app fetches the
  * frame list from RainViewer and hands it to the page; the page draws the base map and animates frames.
  */
 @SuppressLint("SetJavaScriptEnabled")
@@ -73,7 +76,14 @@ fun RadarScreen(vm: WeatherViewModel) {
                         setBackgroundColor(bg)
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
+                        // Serve the bundled page from a real https origin so map/radar requests carry normal CORS headers.
+                        val assets = WebViewAssetLoader.Builder()
+                            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(ctx))
+                            .build()
                         webViewClient = object : WebViewClient() {
+                            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
+                                assets.shouldInterceptRequest(request.url)
+
                             override fun onPageFinished(view: WebView, url: String?) {
                                 view.evaluateJavascript("init($lat, $lon, $dark)", null)
                                 scope.launch {
@@ -89,7 +99,7 @@ fun RadarScreen(vm: WeatherViewModel) {
                                 }
                             }
                         }
-                        loadUrl("file:///android_asset/radar.html")
+                        loadUrl("https://appassets.androidplatform.net/assets/radar.html")
                     }
                 },
                 onRelease = { it.destroy() },
