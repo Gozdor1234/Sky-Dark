@@ -134,42 +134,52 @@ private fun String.cap() = replaceFirstChar { it.titlecase(Locale.getDefault()) 
 private fun minutePossible(m: Minute): Boolean =
     !m.mm.isNaN() && m.mm >= 0.02 && (m.prob.isNaN() || m.prob >= 0.15)
 
+/** "12 min", "1 hr", "1 hr 35 min" (rounded to 5 min past the first hour). */
+private fun inTime(min: Int): String {
+    if (min < 60) return "$min min"
+    val r = (min + 2) / 5 * 5
+    val h = r / 60
+    val mm = r % 60
+    return if (mm == 0) "$h hr" else "$h hr $mm min"
+}
+
 /**
- * Plain-English next-hour line, e.g. "Light rain starting in 12 min, stopping 25 min later."
- * Three tiers: likely precipitation, possible (low-chance traces), then a look at the next few hours
- * so a dry hour ahead of rain still says when it's coming.
+ * Plain-English line for the precipitation outlook, e.g. "Light rain starting in 12 min, stopping
+ * 1 hr 25 min later." Tiers: likely precipitation, then possible (low-chance traces), then a look
+ * past the window at the next few hours.
  */
-fun nextHourSummary(m: List<Minute>, hours: List<Hour>, zone: ZoneId): String {
-    if (m.isEmpty()) return laterLine(hours, zone) ?: "Minute-by-minute forecast isn't available here."
+fun precipSummary(m: List<Minute>, hours: List<Hour>, zone: ZoneId): String {
+    if (m.isEmpty()) return laterLine(hours, zone, 0) ?: "Precipitation forecast isn't available here."
+    val window = if (m.size > 70) "the next ${(m.size - 1) / 60} hours" else "the hour"
     fun typeOf(range: IntRange) = range.map { m[it].type }.firstOrNull { it.isNotBlank() } ?: "rain"
     fun peak(range: IntRange) = range.maxOf { m[it].mm.takeUnless { v -> v.isNaN() } ?: 0.0 }
 
-    fun describe(flags: List<Boolean>, prefix: String, suffix: (IntRange) -> String): String? {
+    fun describe(flags: List<Boolean>, prefix: String): String? {
         if (flags[0]) {
             val stop = flags.indexOfFirst { !it }
             val span = 0 until (if (stop == -1) m.size else stop)
             val noun = (prefix + precipNoun(typeOf(span), peak(span))).cap()
-            return (if (stop == -1) "$noun for the hour" else "$noun stopping in $stop min") + suffix(span) + "."
+            return if (stop == -1) "$noun for $window." else "$noun stopping in ${inTime(stop)}."
         }
         val start = flags.indexOfFirst { it }
         if (start == -1) return null
         val stopRel = flags.drop(start).indexOfFirst { !it }
         val span = start until (if (stopRel == -1) m.size else start + stopRel)
         val noun = (prefix + precipNoun(typeOf(span), peak(span))).cap()
-        val core = if (stopRel == -1) "$noun starting in $start min" else "$noun starting in $start min, stopping $stopRel min later"
-        return core + suffix(span) + "."
+        return if (stopRel == -1) "$noun starting in ${inTime(start)}."
+        else "$noun starting in ${inTime(start)}, stopping ${inTime(stopRel)} later."
     }
 
-    describe(m.map { minuteWet(it) }, "") { "" }?.let { return it }
-    describe(m.map { minutePossible(it) }, "possible ") { "" }?.let { return it }
-    val later = laterLine(hours, zone)
-    return if (later != null) "Dry for the hour. $later" else "No precipitation for the hour."
+    describe(m.map { minuteWet(it) }, "")?.let { return it }
+    describe(m.map { minutePossible(it) }, "possible ")?.let { return it }
+    val later = laterLine(hours, zone, m.last().time)
+    return if (later != null) "Dry for $window. $later" else "No precipitation for $window."
 }
 
-/** "Drizzle likely around 1AM." from the next few hourly entries, or null if they're dry. */
-private fun laterLine(hours: List<Hour>, zone: ZoneId): String? {
-    val now = System.currentTimeMillis() / 1000
-    val next = hours.filter { it.time > now }.take(4)
+/** "Drizzle likely around 1AM." from the few hourly entries after [after] (epoch s), or null if they're dry. */
+private fun laterLine(hours: List<Hour>, zone: ZoneId, after: Long): String? {
+    val from = maxOf(after, System.currentTimeMillis() / 1000)
+    val next = hours.filter { it.time > from }.take(4)
     val h = next.firstOrNull { hourWet(it.mm, it.prob) } ?: return null
     val noun = precipNoun(h.type.ifBlank { "rain" }, h.mm).cap()
     return "$noun likely around ${hourLabel(h.time, zone)}."

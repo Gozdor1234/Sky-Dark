@@ -49,7 +49,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -245,49 +248,72 @@ private fun AlertCard(a: Alert, f: Forecast) {
 private fun NextHour(f: Forecast) {
     val cs = MaterialTheme.colorScheme
     Panel {
-        SectionTitle("Next hour")
-        // Summary and graph read the same blended minutes, so the words always match the picture.
-        val minutes = remember(f) { blendNextHour(f.minutely, f.hourly) }
-        Text(nextHourSummary(minutes, f.hourly, f.zone), fontSize = 17.sp, fontWeight = FontWeight.Medium)
+        SectionTitle("Next 3 hours")
+        // Summary and graph read the same minutes, so the words always match the picture.
+        val minutes = remember(f) { precipOutlook(f.minutely, f.hourly, OUTLOOK_MIN) }
+        Text(precipSummary(minutes, f.hourly, f.zone), fontSize = 17.sp, fontWeight = FontWeight.Medium)
         if (minutes.size >= 2) {
             PrecipGraph(minutes, Modifier.fillMaxWidth().height(100.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                listOf("Now", "10m", "20m", "30m", "40m", "50m", "60m").forEach {
-                    Text(it, fontSize = 11.sp, color = cs.onSurfaceVariant)
-                }
+            AxisLabels(listOf("Now", "30min", "1hr", "1.5hr", "2hr", "2.5hr", "3hr"))
+        }
+    }
+}
+
+private const val OUTLOOK_MIN = 180
+
+/** Labels spread evenly under the graph: first flush left, last flush right, the rest centered on their tick. */
+@Composable
+private fun AxisLabels(labels: List<String>) {
+    val cs = MaterialTheme.colorScheme
+    val measurer = rememberTextMeasurer()
+    val style = TextStyle(fontSize = 11.sp)
+    val density = LocalDensity.current
+    BoxWithConstraints(Modifier.fillMaxWidth().height(16.dp)) {
+        val n = labels.size - 1
+        labels.forEachIndexed { i, label ->
+            val textW = with(density) { measurer.measure(label, style).size.width.toDp() }
+            val x = when (i) {
+                0 -> 0.dp
+                n -> maxWidth - textW
+                else -> maxWidth * (i.toFloat() / n) - textW / 2
             }
+            Text(label, style = style, color = cs.onSurfaceVariant, modifier = Modifier.offset(x = x))
         }
     }
 }
 
 /**
- * Minute data for the graph, topped up with the hourly forecast. Pirate Weather's minute-by-minute
- * numbers can be all zero while the hourly forecast still expects light rain later in the hour;
- * the hourly values are spread across the minutes (linear between hour midpoints) and the larger
- * of the two is drawn, so the graph shows what's coming rather than a flat line.
+ * One value per minute for the next [count] minutes. The first hour comes from Pirate Weather's
+ * minute-by-minute data; everything is topped up with the hourly forecast, spread across the minutes
+ * (linear between hour midpoints). Taking the larger of the two keeps light hourly rain visible even
+ * when the minute data reads zero.
  */
-private fun blendNextHour(m: List<Minute>, hours: List<Hour>): List<Minute> {
+private fun precipOutlook(m: List<Minute>, hours: List<Hour>, count: Int): List<Minute> {
+    val start = m.firstOrNull()?.time ?: hours.firstOrNull()?.time?.coerceAtLeast(System.currentTimeMillis() / 1000)
+        ?: return emptyList()
     if (hours.isEmpty()) return m
     val mids = hours.map { it.time + 1800 }
-    fun hourly(t: Long): Pair<Double, Double> {
+    fun mm(h: Hour) = if (h.mm.isNaN()) 0.0 else h.mm
+    fun pr(h: Hour) = if (h.prob.isNaN()) 0.0 else h.prob
+    fun hourly(t: Long): Minute {
         val k = mids.indexOfFirst { it >= t }
-        fun mm(h: Hour) = if (h.mm.isNaN()) 0.0 else h.mm
-        fun pr(h: Hour) = if (h.prob.isNaN()) 0.0 else h.prob
         return when (k) {
-            -1 -> mm(hours.last()) to pr(hours.last())
-            0 -> mm(hours[0]) to pr(hours[0])
+            -1 -> hours.last().let { Minute(t, mm(it), pr(it), it.type) }
+            0 -> hours[0].let { Minute(t, mm(it), pr(it), it.type) }
             else -> {
                 val a = hours[k - 1]
                 val b = hours[k]
                 val f = (t - mids[k - 1]).toDouble() / (mids[k] - mids[k - 1]).coerceAtLeast(1)
-                (mm(a) + (mm(b) - mm(a)) * f) to (pr(a) + (pr(b) - pr(a)) * f)
+                Minute(t, mm(a) + (mm(b) - mm(a)) * f, pr(a) + (pr(b) - pr(a)) * f, if (f < 0.5) a.type else b.type)
             }
         }
     }
-    return m.map { p ->
-        val (hm, hp) = hourly(p.time)
-        val own = if (p.mm.isNaN()) 0.0 else p.mm
-        if (hm > own) p.copy(mm = hm, prob = hp) else p
+    return (0..count).map { i ->
+        val t = start + i * 60L
+        val h = hourly(t)
+        val own = m.getOrNull(i)
+        val ownMm = own?.mm?.takeUnless { it.isNaN() } ?: -1.0
+        if (own != null && ownMm >= h.mm) own else h.copy(type = own?.type?.ifBlank { h.type } ?: h.type)
     }
 }
 
