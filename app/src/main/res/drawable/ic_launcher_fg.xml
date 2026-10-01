@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Original mark: a raindrop over a short horizon line. 108dp adaptive canvas, art inside the 66dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FF8EC2FF"
+        android:pathData="M54,29 C54,29 38,48 38,60 A16,16 0 0 0 70,60 C70,48 54,29 54,29 Z" />
+    <path
+        android:strokeColor="#E6FFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M45,61 A9,9 0 0 0 52,69" />
+    <path
+        android:strokeColor="#FF4F6E99"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M40,80 L68,80" />
+</vector>
