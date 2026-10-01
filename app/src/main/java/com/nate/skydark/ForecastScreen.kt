@@ -62,6 +62,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
+import kotlin.math.exp
 import kotlin.math.ln
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -321,6 +322,32 @@ private fun precipOutlook(m: List<Minute>, hours: List<Hour>, count: Int): List<
     }
 }
 
+/**
+ * Softens the minute-by-minute series for drawing: a Gaussian blur (about 8 minutes wide) evens out
+ * jumps between data sources and steps between hours, then every 3rd minute is kept so the curve
+ * flows instead of zig-zagging. Values never go below zero.
+ */
+private fun smoothSeries(v: List<Double>): List<Double> {
+    if (v.size < 3) return v
+    val sigma = 4.0
+    val r = 10
+    val weights = (-r..r).map { exp(-(it * it) / (2 * sigma * sigma)) }
+    val blurred = v.indices.map { i ->
+        var sum = 0.0
+        var wsum = 0.0
+        for (k in -r..r) {
+            val j = (i + k).coerceIn(0, v.lastIndex)
+            sum += v[j] * weights[k + r]
+            wsum += weights[k + r]
+        }
+        (sum / wsum).coerceAtLeast(0.0)
+    }
+    val step = 3
+    val idx = (0 until blurred.size step step).toMutableList()
+    if (idx.last() != blurred.lastIndex) idx += blurred.lastIndex
+    return idx.map { blurred[it] }
+}
+
 /** Precip scale: logarithmic so even drizzle (0.05 mm/h) shows, while heavy rain still tops out. */
 private fun precipScale(mm: Double): Float =
     (ln(1.0 + mm.coerceIn(0.0, 10.0) / 0.05) / ln(1.0 + 10.0 / 0.05)).toFloat()
@@ -342,16 +369,26 @@ private fun PrecipGraph(m: List<Minute>, modifier: Modifier) {
             }
             drawLine(grid, Offset(0f, ht), Offset(w, ht), strokeWidth = 1.dp.toPx())
             // Two layers: pale = how much would fall if it happens, solid = weighted by its chance.
-            fun area(weighted: Boolean) = Path().apply {
-                moveTo(0f, ht)
-                m.forEachIndexed { i, p ->
+            fun area(weighted: Boolean): Path {
+                val ys = smoothSeries(m.map { p ->
                     val mm = if (p.mm.isNaN()) 0.0 else p.mm
                     val pr = if (p.prob.isNaN()) 1.0 else p.prob.coerceIn(0.0, 1.0)
-                    val x = w * i / (m.size - 1)
-                    lineTo(x, ht - precipScale(if (weighted) mm * pr else mm) * ht)
+                    precipScale(if (weighted) mm * pr else mm).toDouble()
+                })
+                val pts = ys.mapIndexed { i, v -> Offset(w * i / (ys.size - 1), (ht - v * ht).toFloat().coerceAtMost(ht)) }
+                return Path().apply {
+                    moveTo(0f, ht)
+                    lineTo(pts[0].x, pts[0].y)
+                    // Curve through the midpoints between samples, using each sample as the control point.
+                    for (i in 1 until pts.size) {
+                        val a = pts[i - 1]
+                        val b = pts[i]
+                        quadraticBezierTo(a.x, a.y, (a.x + b.x) / 2f, (a.y + b.y) / 2f)
+                    }
+                    lineTo(pts.last().x, pts.last().y)
+                    lineTo(w, ht)
+                    close()
                 }
-                lineTo(w, ht)
-                close()
             }
             drawPath(area(weighted = false), fill.copy(alpha = 0.28f))
             drawPath(area(weighted = true), fill.copy(alpha = 0.85f))
