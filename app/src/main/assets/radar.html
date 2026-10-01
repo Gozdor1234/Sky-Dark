@@ -73,10 +73,8 @@
   // Tiles are fetched by the app (same origin) to avoid cross-site restrictions in the WebView.
   var PROXY = 'https://appassets.androidplatform.net';
   var OPACITY = 1.0;   // tiles carry their own transparency
-  var FADE_MS = 450;   // crossfade between frames
-  var STEP_MS = 550;   // time on each frame while playing
   var map = null, ready = false, pendingInit = undefined, dark = false;
-  var frames = [], idx = 0, nowIdx = 0, timer = null, satellite = false, labelPaint = {};
+  var frames = [], nowIdx = 0, satellite = false, labelPaint = {};
 
   function init(lat, lon, isDark) {
     dark = !!isDark;
@@ -174,62 +172,100 @@
       map.addLayer({ id: 'rv' + i, type: 'raster', source: 'rv' + i,
         paint: {
           'raster-opacity': 0.001,
-          'raster-opacity-transition': { duration: FADE_MS, delay: 0 },
+          'raster-opacity-transition': { duration: 0, delay: 0 },
           'raster-fade-duration': 0,
           'raster-resampling': 'linear'
         } }, before);
     });
     var slider = document.getElementById('slider');
     slider.max = frames.length - 1;
+    slider.step = 0.01;
     drawTicks();
     if (!hrrrInit) showError('Forecast radar is unavailable right now; showing observed radar only.');
-    idx = nowIdx;
-    show(nowIdx);
+    shown = {};
+    render(nowIdx);
   }
 
+  // One label per whole hour: the frame closest to -1 hr, Now, +1 hr, +2 hr, +3 hr.
   function drawTicks() {
     var el = document.getElementById('ticks'); el.innerHTML = '';
     var n = frames.length - 1; if (n <= 0) return;
-    frames.forEach(function (f, i) {
-      var label = null;
-      if (f.kind === 'now') label = 'Now';
-      else if (f.kind === 'past' && i === 0) label = '-1 hr';
-      else if (f.kind === 'future') {
-        var hrs = (f.t - frames[nowIdx].t) / 3600000;
-        if (Math.abs(hrs - Math.round(hrs)) < 0.13 && Math.round(hrs) >= 1) label = '+' + Math.round(hrs) + ' hr';
-      }
-      if (!label) return;
+    var nowT = frames[nowIdx].t;
+    var marks = [{ h: -1, label: '-1 hr' }, { h: 0, label: 'Now' }, { h: 1, label: '+1 hr' }, { h: 2, label: '+2 hr' }, { h: 3, label: '+3 hr' }];
+    marks.forEach(function (m) {
+      var best = -1, bestErr = Infinity;
+      frames.forEach(function (f, i) {
+        var err = Math.abs((f.t - nowT) / 3600000 - m.h);
+        if (err < bestErr) { bestErr = err; best = i; }
+      });
+      if (m.h !== 0 && bestErr > 0.2) return;   // that hour isn't covered by the timeline
+      if (m.h === 0) best = nowIdx;
       var s = document.createElement('span');
-      s.textContent = label; s.style.left = (i / n * 100) + '%';
-      if (f.kind === 'now') s.className = 'nowtick';
+      s.textContent = m.label; s.style.left = (best / n * 100) + '%';
+      if (m.h === 0) s.className = 'nowtick';
       el.appendChild(s);
     });
   }
 
-  function show(i) {
+  // Playback position is fractional: between two frames, both are drawn and crossfaded by the fraction,
+  // so the radar dissolves continuously instead of jumping from frame to frame.
+  var pos = 0, shown = {}, raf = null, lastTs = 0, holdUntil = 0;
+  var MIN_PER_SEC = 25;   // minutes of weather shown per second of playback
+
+  function setOpacity(i, v) {
+    v = Math.max(0.001, v);
+    if (shown[i] === v || !map.getLayer('rv' + i)) return;
+    shown[i] = v;
+    map.setPaintProperty('rv' + i, 'raster-opacity', v);
+  }
+
+  function render(p) {
     if (!frames.length) return;
-    if (map.getLayer('rv' + idx)) map.setPaintProperty('rv' + idx, 'raster-opacity', 0.001);
-    idx = i;
-    map.setPaintProperty('rv' + i, 'raster-opacity', OPACITY);
-    document.getElementById('slider').value = i;
-    var f = frames[i];
-    var label = new Date(f.t).toLocaleTimeString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
-    var kind = f.kind === 'now' ? 'Latest radar' : f.kind === 'past' ? 'Observed' : 'Forecast';
+    var n = frames.length - 1;
+    pos = Math.max(0, Math.min(n, p));
+    var i = Math.floor(pos), f = pos - i;
+    if (i >= n) { i = n; f = 0; }
+    for (var k = 0; k <= n; k++) {
+      var v = k === i ? 1 - f : (k === i + 1 ? f : 0);
+      setOpacity(k, v * OPACITY);
+    }
+    document.getElementById('slider').value = pos;
+    var a = frames[i], b = frames[Math.min(n, i + 1)];
+    var t = a.t + (b.t - a.t) * f;
+    var near = f < 0.5 ? a : b;
+    var label = new Date(t).toLocaleTimeString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+    var kind = near.kind === 'now' ? 'Latest radar' : near.kind === 'past' ? 'Observed' : 'Forecast';
     document.getElementById('time').innerHTML = label + '<span id="kind">' + kind + '</span>';
   }
 
+  // Advance in weather-time, so 5-minute observed steps and 15-minute forecast steps play at the same pace.
+  function tick(ts) {
+    if (!lastTs) lastTs = ts;
+    var dt = Math.min(100, ts - lastTs) / 1000;
+    lastTs = ts;
+    var n = frames.length - 1;
+    if (ts < holdUntil) { raf = requestAnimationFrame(tick); return; }
+    if (pos >= n) { render(0); holdUntil = ts + 400; raf = requestAnimationFrame(tick); return; }
+    var i = Math.floor(pos);
+    var gapMin = Math.max(1, (frames[Math.min(n, i + 1)].t - frames[i].t) / 60000);
+    var next = pos + dt * MIN_PER_SEC / gapMin;
+    if (next >= n) { render(n); holdUntil = ts + 1200; } else { render(next); }
+    raf = requestAnimationFrame(tick);
+  }
+
   function play() {
-    if (timer) { stop(); return; }
+    if (raf) { stop(); return; }
     if (!frames.length) return;
     document.getElementById('play').innerHTML = '&#10074;&#10074;';
-    // Steady steps with a short hold on the last frame before looping.
-    var hold = 0;
-    timer = setInterval(function () {
-      if (idx >= frames.length - 1) { if (++hold < 3) return; hold = 0; show(0); return; }
-      show(idx + 1);
-    }, STEP_MS);
+    lastTs = 0; holdUntil = 0;
+    if (pos >= frames.length - 1) render(0);
+    raf = requestAnimationFrame(tick);
   }
-  function stop() { clearInterval(timer); timer = null; document.getElementById('play').innerHTML = '&#9654;'; }
+  function stop() {
+    if (raf) cancelAnimationFrame(raf);
+    raf = null;
+    document.getElementById('play').innerHTML = '&#9654;';
+  }
 
   // Satellite imagery sits under the radar; labels switch to light text for contrast.
   function setSatellite(on) {
@@ -266,10 +302,10 @@
   }
 
   document.getElementById('play').addEventListener('click', play);
-  document.getElementById('now').addEventListener('click', function () { stop(); show(nowIdx); });
+  document.getElementById('now').addEventListener('click', function () { stop(); render(nowIdx); });
   document.getElementById('bMap').addEventListener('click', function () { setSatellite(false); });
   document.getElementById('bSat').addEventListener('click', function () { setSatellite(true); });
-  document.getElementById('slider').addEventListener('input', function (e) { stop(); show(parseInt(e.target.value, 10)); });
+  document.getElementById('slider').addEventListener('input', function (e) { stop(); render(parseFloat(e.target.value)); });
 </script>
 </body>
 </html>
