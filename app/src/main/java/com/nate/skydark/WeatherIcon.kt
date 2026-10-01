@@ -26,35 +26,40 @@ import kotlin.math.sin
 fun WeatherIcon(
     icon: String,
     modifier: Modifier = Modifier,
-    tint: Color = MaterialTheme.colorScheme.onSurface,
     bg: Color = MaterialTheme.colorScheme.surface,
 ) {
+    // Full-color glyphs: soft gray-blue clouds, warm moon, plus the sun/rain/snow/bolt accents.
+    val dark = LocalLook.current.dark
+    val tint = if (dark) Color(0xFFC3CCD8) else Color(0xFF8E9BAD)
+    val moonColor = Color(0xFFF1D27A)
+    val fogColor = if (dark) Color(0xFFA9B3C0) else Color(0xFF9AA5B3)
+    val windColor = Color(0xFF5FAFC4)
     Canvas(modifier) {
         val s = size.minDimension
         translate((size.width - s) / 2f, (size.height - s) / 2f) {
             when (icon) {
                 "clear-day" -> sun(Offset(s * 0.5f, s * 0.5f), s * 0.2f)
-                "clear-night" -> moon(Offset(s * 0.5f, s * 0.5f), s * 0.3f, tint)
+                "clear-night" -> moon(Offset(s * 0.5f, s * 0.5f), s * 0.3f, moonColor)
                 "partly-cloudy-day" -> {
                     sun(Offset(s * 0.36f, s * 0.36f), s * 0.14f)
                     cloud(Offset(s * 0.56f, s * 0.64f), s * 0.64f, tint, bg)
                 }
                 "partly-cloudy-night" -> {
-                    moon(Offset(s * 0.38f, s * 0.34f), s * 0.2f, tint.copy(alpha = 0.75f))
+                    moon(Offset(s * 0.38f, s * 0.34f), s * 0.2f, moonColor)
                     cloud(Offset(s * 0.56f, s * 0.64f), s * 0.64f, tint, bg)
                 }
                 "cloudy" -> cloud(Offset(s * 0.5f, s * 0.56f), s * 0.82f, tint, null)
                 "fog" -> {
                     val w = s * 0.07f
-                    line(tint, s * 0.2f, s * 0.36f, s * 0.8f, s * 0.36f, w)
-                    line(tint, s * 0.14f, s * 0.52f, s * 0.72f, s * 0.52f, w)
-                    line(tint, s * 0.28f, s * 0.68f, s * 0.86f, s * 0.68f, w)
+                    line(fogColor, s * 0.2f, s * 0.36f, s * 0.8f, s * 0.36f, w)
+                    line(fogColor, s * 0.14f, s * 0.52f, s * 0.72f, s * 0.52f, w)
+                    line(fogColor, s * 0.28f, s * 0.68f, s * 0.86f, s * 0.68f, w)
                 }
                 "wind" -> {
                     val w = s * 0.07f
-                    line(tint, s * 0.14f, s * 0.34f, s * 0.7f, s * 0.34f, w)
-                    line(tint, s * 0.1f, s * 0.5f, s * 0.86f, s * 0.5f, w)
-                    line(tint, s * 0.2f, s * 0.66f, s * 0.62f, s * 0.66f, w)
+                    line(windColor, s * 0.14f, s * 0.34f, s * 0.7f, s * 0.34f, w)
+                    line(windColor, s * 0.1f, s * 0.5f, s * 0.86f, s * 0.5f, w)
+                    line(windColor, s * 0.2f, s * 0.66f, s * 0.62f, s * 0.66f, w)
                 }
                 "rain", "drizzle" -> {
                     cloud(Offset(s * 0.5f, s * 0.42f), s * 0.78f, tint, null)

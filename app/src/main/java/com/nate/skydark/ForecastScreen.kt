@@ -186,7 +186,7 @@ private fun Hero(f: Forecast) {
             WeatherIcon(c.icon, Modifier.size(78.dp), bg = cs.background)
             Spacer(Modifier.width(14.dp))
             Column {
-                Text(deg(c.temp), fontSize = 64.sp, lineHeight = 64.sp, fontWeight = FontWeight.Light)
+                Text(deg(c.temp), fontSize = 64.sp, lineHeight = 64.sp, fontWeight = FontWeight.Normal)
                 Text("Feels ${deg(c.feels)}", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = cs.onSurfaceVariant)
             }
         }
