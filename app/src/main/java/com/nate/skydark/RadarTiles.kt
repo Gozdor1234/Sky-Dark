@@ -105,6 +105,9 @@ object RadarWarmup {
     private const val HRRR_STATUS = "https://mesonet.agron.iastate.edu/data/gis/images/4326/hrrr/refd_1080.json"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /** Main-thread scope that outlives a single screen (the radar WebView is kept between visits). */
+    val main = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
     @Volatile private var hrrrInit: String? = null
     @Volatile private var hrrrFetchedAt = 0L
     @Volatile private var lastWarm: Triple<Double, Double, Long>? = null
@@ -121,7 +124,10 @@ object RadarWarmup {
         return fresh ?: cached
     }
 
-    /** Matches radar.html: opens at zoom 6.3 with 128 px tiles, so MapLibre requests zoom-7 tiles. */
+    /**
+     * Matches radar.html: opens at zoom 6.3 with 128 px tiles. MapLibre's base tile is 512 px, so a
+     * 128 px source is drawn 2 levels deeper: round(6.3 + 2) = zoom-8 tiles.
+     */
     fun warm(lat: Double, lon: Double) {
         val last = lastWarm
         val now = System.currentTimeMillis()
@@ -129,7 +135,7 @@ object RadarWarmup {
         lastWarm = Triple(lat, lon, now)
         scope.launch {
             launch { hrrrInit() }
-            val z = 7
+            val z = 8
             val n = 1 shl z
             val cx = floor((lon + 180.0) / 360.0 * n).toInt()
             val latRad = lat * PI / 180.0

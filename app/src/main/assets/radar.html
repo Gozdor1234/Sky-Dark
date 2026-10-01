@@ -87,7 +87,7 @@
   var OPACITY = 1.0;        // tiles carry their own transparency
   var MIN_PER_SEC = 25;     // minutes of weather shown per second of playback
   var map = null, ready = false, dark = false, satellite = false, labelPaint = {};
-  var frames = [], nowIdx = 0, pendingForecast, haveForecast = false, layerSeq = 0;
+  var frames = [], loadedFrames = {}, nowIdx = 0, pendingForecast, haveForecast = false, layerSeq = 0;
 
   function init(lat, lon, isDark, isAmoled, isGlass) {
     dark = !!isDark;
@@ -106,6 +106,14 @@
     map.touchZoomRotate.disableRotation();
     var dot = document.createElement('div'); dot.className = 'pin';
     new maplibregl.Marker({ element: dot }).setLngLat([lon, lat]).addTo(map);
+    // Remember which radar frames have finished loading their tiles at least once.
+    map.on('sourcedata', function (e) {
+      var id = e.sourceId;
+      if (!id || id.indexOf('rv') !== 0 || loadedFrames[id]) return;
+      var done = e.isSourceLoaded;
+      if (done === undefined) { try { done = map.isSourceLoaded(id); } catch (err) { done = false; } }
+      if (done) { loadedFrames[id] = true; if (!raf) render(pos); }
+    });
     map.on('load', function () {
       ready = true;
       if (!dark) mutedBase();
@@ -238,7 +246,7 @@
 
   // Playback position is fractional: between two frames, both are drawn and crossfaded by the fraction,
   // so the radar dissolves continuously instead of jumping from frame to frame.
-  var pos = 0, shown = {}, raf = null, lastTs = 0, holdUntil = 0;
+  var pos = 0, shown = {}, raf = null, lastTs = 0, holdUntil = 0, waitSince = 0;
 
   function setOpacity(f, v) {
     if (!f.id) return;   // layer not added yet
@@ -248,16 +256,34 @@
     map.setPaintProperty(f.id, 'raster-opacity', v);
   }
 
+  function isLoaded(f) { return !!(f && f.id && loadedFrames[f.id]); }
+
+  // Closest frame to index i whose tiles are in, or -1 if none yet.
+  function nearestLoaded(i) {
+    for (var d = 0; d < frames.length; d++) {
+      if (isLoaded(frames[i - d])) return i - d;
+      if (isLoaded(frames[i + d])) return i + d;
+    }
+    return -1;
+  }
+
   function render(p) {
     if (!frames.length) return;
     var n = frames.length - 1;
     pos = Math.max(0, Math.min(n, p));
     var i = Math.floor(pos), f = pos - i;
     if (i >= n) { i = n; f = 0; }
-    for (var k = 0; k <= n; k++) {
-      var v = k === i ? 1 - f : (k === i + 1 ? f : 0);
-      setOpacity(frames[k], v * OPACITY);
+    // Crossfade only between frames that have loaded. Otherwise keep showing the closest frame that
+    // has, so the radar never blinks out while tiles are still arriving.
+    var show = {};
+    if (isLoaded(frames[i]) && (f === 0 || isLoaded(frames[i + 1]))) {
+      show[i] = 1 - f;
+      if (f > 0) show[i + 1] = f;
+    } else {
+      var j = nearestLoaded(Math.round(pos));
+      show[j >= 0 ? j : Math.round(pos)] = 1;   // nothing loaded yet: let the current frame fill in
     }
+    for (var k = 0; k <= n; k++) setOpacity(frames[k], (show[k] || 0) * OPACITY);
     document.getElementById('slider').value = pos;
     var a = frames[i], b = frames[Math.min(n, i + 1)];
     var t = a.t + (b.t - a.t) * f;
@@ -278,6 +304,12 @@
     var i = Math.floor(pos);
     var gapMin = Math.max(1, (frames[Math.min(n, i + 1)].t - frames[i].t) / 60000);
     var next = pos + dt * MIN_PER_SEC / gapMin;
+    // Wait (up to 3 s) at a frame boundary if the next frame's tiles haven't arrived yet.
+    if (Math.floor(next) > i && !isLoaded(frames[Math.min(n, i + 1)])) {
+      if (!waitSince) waitSince = ts;
+      if (ts - waitSince < 3000) { render(i); raf = requestAnimationFrame(tick); return; }
+    }
+    waitSince = 0;
     if (next >= n) { render(n); holdUntil = ts + 1200; } else { render(next); }
     raf = requestAnimationFrame(tick);
   }
