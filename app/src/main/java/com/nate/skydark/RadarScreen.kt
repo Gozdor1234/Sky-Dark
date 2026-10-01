@@ -60,6 +60,15 @@ private object TileProxy {
                 if (code != 200) return empty(code)
                 val bytes = conn.inputStream.use { it.readBytes() }
                 val type = conn.contentType?.substringBefore(';')?.trim() ?: "image/png"
+                if (prefix == "/iem/" && type == "image/png") {
+                    // Radar tiles get re-rendered in the app's palette with the grid smoothed out.
+                    val parts = path.split('/')
+                    val zoom = parts.getOrNull(parts.size - 3)?.toIntOrNull() ?: 7
+                    val styled = runCatching { RadarPaint.repaint(bytes, zoom, model = path.contains("hrrr::")) }.getOrNull()
+                    if (styled != null) {
+                        return WebResourceResponse("image/png", null, 200, "OK", headers, ByteArrayInputStream(styled))
+                    }
+                }
                 WebResourceResponse(type, null, 200, "OK", headers, ByteArrayInputStream(bytes))
             } finally {
                 conn.disconnect()

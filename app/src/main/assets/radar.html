@@ -24,10 +24,10 @@
     padding: 6px 8px; font-size: 10px; color: var(--muted); display: flex; flex-direction: column; gap: 3px;
   }
   .legend .ramp { width: 90px; height: 6px; border-radius: 3px;
-    background: linear-gradient(90deg, #04e9e7, #019ff4, #02fd02, #01c501, #fdf802, #fd9500, #fd0000, #bc0000, #f800fd); }
+    background: linear-gradient(90deg, #a6dfd6, #86d4c9, #5fb8d6, #3a8fd9, #2b4fb8, #c23b5a, #e0452f, #f5c242); }
   .legend .ends { display: flex; justify-content: space-between; }
   .bar {
-    position: absolute; left: 10px; right: 10px; bottom: 26px; z-index: 5;
+    position: absolute; left: 10px; right: 10px; bottom: 34px; z-index: 5;
     background: var(--panel); border-radius: 16px; padding: 10px 12px 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.18);
   }
   .row { display: flex; align-items: center; gap: 10px; }
@@ -72,7 +72,9 @@
 <script>
   // Tiles are fetched by the app (same origin) to avoid cross-site restrictions in the WebView.
   var PROXY = 'https://appassets.androidplatform.net';
-  var OPACITY = 0.7;
+  var OPACITY = 1.0;   // tiles carry their own transparency
+  var FADE_MS = 450;   // crossfade between frames
+  var STEP_MS = 550;   // time on each frame while playing
   var map = null, ready = false, pendingInit = undefined, dark = false;
   var frames = [], idx = 0, nowIdx = 0, timer = null, satellite = false, labelPaint = {};
 
@@ -141,8 +143,8 @@
     var MIN = 60000, now = Date.now();
     var list = [];
     var base = Math.floor((now - 5 * MIN) / (5 * MIN)) * 5 * MIN;   // newest composite that should exist
-    for (var k = 6; k >= 1; k--) {
-      var t = base - k * 10 * MIN;
+    for (var k = 12; k >= 1; k--) {
+      var t = base - k * 5 * MIN;
       list.push({ t: t, kind: 'past', layer: 'ridge::USCOMP-N0Q-' + stamp(new Date(t)) });
     }
     list.push({ t: now, kind: 'now', layer: 'ridge::USCOMP-N0Q-0' });
@@ -164,12 +166,18 @@
     nowIdx = frames.findIndex(function (f) { return f.kind === 'now'; });
     var before = firstLabelLayer();
     frames.forEach(function (f, i) {
+      // tileSize 128 asks for one zoom level deeper, so tiles stay crisp on high-density screens.
       map.addSource('rv' + i, {
-        type: 'raster', tileSize: 256, maxzoom: 9,
+        type: 'raster', tileSize: 128, maxzoom: 10,
         tiles: [PROXY + '/iem/' + f.layer + '/{z}/{x}/{y}.png']
       });
       map.addLayer({ id: 'rv' + i, type: 'raster', source: 'rv' + i,
-        paint: { 'raster-opacity': 0.001, 'raster-fade-duration': 0 } }, before);
+        paint: {
+          'raster-opacity': 0.001,
+          'raster-opacity-transition': { duration: FADE_MS, delay: 0 },
+          'raster-fade-duration': 0,
+          'raster-resampling': 'linear'
+        } }, before);
     });
     var slider = document.getElementById('slider');
     slider.max = frames.length - 1;
@@ -214,7 +222,12 @@
     if (timer) { stop(); return; }
     if (!frames.length) return;
     document.getElementById('play').innerHTML = '&#10074;&#10074;';
-    timer = setInterval(function () { show(idx >= frames.length - 1 ? 0 : idx + 1); }, 650);
+    // Steady steps with a short hold on the last frame before looping.
+    var hold = 0;
+    timer = setInterval(function () {
+      if (idx >= frames.length - 1) { if (++hold < 3) return; hold = 0; show(0); return; }
+      show(idx + 1);
+    }, STEP_MS);
   }
   function stop() { clearInterval(timer); timer = null; document.getElementById('play').innerHTML = '&#9654;'; }
 
