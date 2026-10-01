@@ -123,9 +123,10 @@ object RadarPaint {
     /**
      * @param zoom tile zoom level, used to size the blur to the data's native resolution
      * @param model true for HRRR forecast tiles (~3 km cells), false for NEXRAD (~1 km)
+     * @param gray true = grayscale intensity tile (dBZ x 3) instead of a colored one
      * @return PNG bytes, or null if the tile couldn't be decoded (caller passes the original through)
      */
-    fun repaint(png: ByteArray, zoom: Int, model: Boolean): ByteArray? {
+    fun repaint(png: ByteArray, zoom: Int, model: Boolean, gray: Boolean = false): ByteArray? {
         val src = BitmapFactory.decodeByteArray(png, 0, png.size) ?: return null
         val w = src.width
         val h = src.height
@@ -144,7 +145,15 @@ object RadarPaint {
         val radius = max(1, (cellPx * 0.6).roundToInt()).coerceAtMost(12)
         val smooth = blur(v, w, h, radius)
 
-        for (i in px.indices) px[i] = color(smooth[i])
+        if (gray) {
+            // Intensity tile for the animated radar: gray level = dBZ x 3 (0..85 dBZ), colored on the GPU.
+            for (i in px.indices) {
+                val g = (smooth[i] * 3f).roundToInt().coerceIn(0, 255)
+                px[i] = (0xFF shl 24) or (g shl 16) or (g shl 8) or g
+            }
+        } else {
+            for (i in px.indices) px[i] = color(smooth[i])
+        }
         val out = Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888)
         val bytes = ByteArrayOutputStream(64 * 1024)
         out.compress(Bitmap.CompressFormat.PNG, 100, bytes)

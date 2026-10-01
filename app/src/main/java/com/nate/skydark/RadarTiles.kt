@@ -27,6 +27,7 @@ import kotlin.math.tan
 object TileProxy {
     private val upstreams = listOf(
         "/iem/" to "https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/",
+        "/iemv/" to "https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/",
         "/esri/" to "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/",
     )
     private val headers = mapOf("Access-Control-Allow-Origin" to "*")
@@ -65,11 +66,11 @@ object TileProxy {
                 if (conn.responseCode != 200) return null
                 val bytes = conn.inputStream.use { it.readBytes() }
                 val type = conn.contentType?.substringBefore(';')?.trim() ?: "image/png"
-                val entry = if (prefix == "/iem/" && type == "image/png") {
+                val entry = if ((prefix == "/iem/" || prefix == "/iemv/") && type == "image/png") {
                     // Radar tiles get re-rendered in the app's palette with the grid smoothed out.
                     val parts = path.split('/')
                     val zoom = parts.getOrNull(parts.size - 3)?.toIntOrNull() ?: 7
-                    val styled = runCatching { RadarPaint.repaint(bytes, zoom, model = path.contains("hrrr::")) }.getOrNull()
+                    val styled = runCatching { RadarPaint.repaint(bytes, zoom, model = path.contains("hrrr::"), gray = prefix == "/iemv/") }.getOrNull()
                     if (styled != null) Entry(styled, "image/png", System.currentTimeMillis())
                     else Entry(bytes, type, System.currentTimeMillis())
                 } else {
@@ -125,8 +126,8 @@ object RadarWarmup {
     }
 
     /**
-     * Matches radar.html: opens at zoom 6.3 with 128 px tiles. MapLibre's base tile is 512 px, so a
-     * 128 px source is drawn 2 levels deeper: round(6.3 + 2) = zoom-8 tiles.
+     * Matches radar.html: it opens at map zoom 6.3 and builds each frame from intensity tiles at
+     * round(zoom + 1.5) = zoom 8.
      */
     fun warm(lat: Double, lon: Double) {
         val last = lastWarm
@@ -145,7 +146,7 @@ object RadarWarmup {
                 .filter { (x, y) -> y in 0 until n }
                 .map { (x, y) ->
                     val wx = ((x % n) + n) % n
-                    async { gate.withPermit { TileProxy.warm("/iem/ridge::USCOMP-N0Q-0/$z/$wx/$y.png") } }
+                    async { gate.withPermit { TileProxy.warm("/iemv/ridge::USCOMP-N0Q-0/$z/$wx/$y.png") } }
                 }
                 .awaitAll()
         }

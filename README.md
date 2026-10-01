@@ -57,12 +57,12 @@
 | [Open-Meteo](https://open-meteo.com/en/docs/geocoding-api) | City search (GeoNames data) |
 | [MapLibre GL JS](https://maplibre.org) (BSD-3) | Map rendering, bundled in the app |
 
-Radar colors are the app's own palette: each tile is converted from the standard NWS reflectivity scale on the phone and smoothed to soften the data grid.
+Radar colors are the app's own palette: each tile is converted from the standard NWS reflectivity scale on the phone and smoothed to soften the data grid. Playback is motion-interpolated: the app estimates how the rain moved between frames and slides it along that path on the GPU, so storms glide instead of jumping.
 
 ## 🛠️ Under the hood
 
 - **Language and UI:** Kotlin 2.0 and Jetpack Compose (Material 3)
-- **Radar:** a bundled MapLibre page in a WebView; tiles are fetched, re-colored, and cached by the app
+- **Radar:** a bundled MapLibre page in a WebView with a custom WebGL layer; tiles are fetched, smoothed, and cached by the app, and a background worker estimates motion between frames
 - **Android versions:** minSdk 26 (Android 8.0), targetSdk 34
 - **Builds:** every push to `main` builds a signed APK with **GitHub Actions** (`.github/workflows/build-apk.yml`) and publishes it as a release. No local Android setup needed.
 - **Light on data:** forecasts refresh at most every 10 minutes unless you pull down to refresh.

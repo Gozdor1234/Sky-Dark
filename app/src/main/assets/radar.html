@@ -84,14 +84,14 @@
 <script>
   // Tiles are fetched by the app (same origin) to avoid cross-site restrictions in the WebView.
   var PROXY = 'https://appassets.androidplatform.net';
-  // Radar tiles are spread over a few host names so the WebView fetches more of them in parallel
-  // (browsers cap simultaneous requests per host). The app answers all of them the same way.
+  // Radar tiles are spread over a few host names so the WebView fetches more of them in parallel.
   var TILE_HOSTS = ['a', 'b', 'c', 'd'].map(function (h) { return 'https://' + h + '.appassets.androidplatform.net'; });
-  var PREFETCH = 3;   // frames loading in the background at once
-  var OPACITY = 1.0;        // tiles carry their own transparency
-  var MIN_PER_SEC = 25;     // minutes of weather shown per second of playback
+  var MIN_PER_SEC = 25;      // minutes of weather shown per second of playback
+  var FRAMES_LOADING = 2;    // frames downloading at once
+  var MAX_TILES = 42;        // tile budget for one frame of the visible area
   var map = null, ready = false, dark = false, satellite = false, labelPaint = {};
-  var frames = [], loadedFrames = {}, nowIdx = 0, pendingForecast, haveForecast = false, layerSeq = 0;
+  var frames = [], nowIdx = 0, pendingForecast, haveForecast = false;
+  var pos = 0, raf = null, lastTs = 0, holdUntil = 0, waitSince = 0;
 
   function init(lat, lon, isDark, isAmoled, isGlass) {
     dark = !!isDark;
@@ -110,14 +110,14 @@
     map.touchZoomRotate.disableRotation();
     var dot = document.createElement('div'); dot.className = 'pin';
     new maplibregl.Marker({ element: dot }).setLngLat([lon, lat]).addTo(map);
-    // While the view moves, only the frame on screen fetches tiles, so it fills in first.
-    map.on('movestart', function () { pauseHidden(); });
-    map.on('moveend', function () { loadedFrames = {}; pauseHidden(); render(pos); startChecker(); });
+    map.on('moveend', viewChanged);
     map.on('load', function () {
       ready = true;
       if (!dark) mutedBase();
+      map.addLayer(radarLayer, firstLabelLayer());
       buildObserved();
       if (pendingForecast !== undefined) { var p = pendingForecast; pendingForecast = undefined; setForecast(p); }
+      viewChanged();
     });
     window.addEventListener('resize', function () { map.resize(); });
     setTimeout(function () { map.resize(); }, 300);
@@ -156,62 +156,9 @@
       pad(d.getUTCHours(), 2) + pad(d.getUTCMinutes(), 2);
   }
 
-  function addLayer(f, visible) {
-    f.id = 'rv' + (layerSeq++);
-    // tileSize 128 asks for one zoom level deeper, so tiles stay crisp on high-density screens.
-    map.addSource(f.id, { type: 'raster', tileSize: 128, maxzoom: 10,
-      tiles: TILE_HOSTS.map(function (h) { return h + '/iem/' + f.layer + '/{z}/{x}/{y}.png'; }) });
-    map.addLayer({ id: f.id, type: 'raster', source: f.id,
-      layout: { visibility: visible ? 'visible' : 'none' },
-      paint: {
-        'raster-opacity': visible ? OPACITY : 0.001,
-        'raster-opacity-transition': { duration: 0, delay: 0 },
-        'raster-fade-duration': 0,
-        'raster-resampling': 'linear'
-      } }, firstLabelLayer());
-    shown[f.id] = visible ? OPACITY : 0.001;
-    active[f.id] = visible ? Date.now() : 0;
-  }
 
-  // ---- Loading order -------------------------------------------------------------------------
-  // A frame's layer is switched on ("active") only when it should fetch tiles. The frame on screen
-  // always is; the rest are switched on a few at a time, closest to the current time first.
-  var active = {}, checker = null;
-
-  function setActive(f, on) {
-    if (!f || !f.id || !map.getLayer(f.id)) return;
-    if (!!active[f.id] === on) return;
-    active[f.id] = on ? Date.now() : 0;
-    map.setLayoutProperty(f.id, 'visibility', on ? 'visible' : 'none');
-    if (on) startChecker();
-  }
-
-  // Switch off every frame except the ones currently drawn.
-  function pauseHidden() {
-    frames.forEach(function (f) { if (!(shown[f.id] > 0.01)) setActive(f, false); });
-  }
-
-  // Mark active frames whose tiles have all arrived, then top up the background loading.
-  function check() {
-    var waiting = 0;
-    frames.forEach(function (f) {
-      if (!f.id || !active[f.id] || loadedFrames[f.id]) return;
-      var done = false;
-      try { done = Date.now() - active[f.id] > 150 && map.isSourceLoaded(f.id); } catch (e) {}
-      if (done) { loadedFrames[f.id] = true; if (!raf) render(pos); } else waiting++;
-    });
-    var center = Math.round(pos);
-    var queue = frames.map(function (f, i) { return i; })
-      .filter(function (i) { var f = frames[i]; return f.id && !active[f.id]; })
-      .sort(function (a, b) { return Math.abs(a - center) - Math.abs(b - center); });
-    while (waiting < PREFETCH && queue.length) { setActive(frames[queue.shift()], true); waiting++; }
-    if (!waiting && !queue.length) { clearInterval(checker); checker = null; }
-  }
-
-  function startChecker() { if (!checker) checker = setInterval(check, 200); }
-
-
-  // Latest radar first, alone, so it appears as fast as possible; then the past hour behind it.
+  // ---- Frames --------------------------------------------------------------------------------
+  // Past hour every 5 min, the latest scan, then HRRR forecast every 15 min out to 3 hours.
   function buildObserved() {
     var MIN = 60000, now = Date.now();
     var base = Math.floor((now - 5 * MIN) / (5 * MIN)) * 5 * MIN;   // newest composite that should exist
@@ -220,17 +167,12 @@
       var t = base - k * 5 * MIN;
       past.push({ t: t, kind: 'past', layer: 'ridge::USCOMP-N0Q-' + stamp(new Date(t)) });
     }
-    var nowFrame = { t: now, kind: 'now', layer: 'ridge::USCOMP-N0Q-0' };
-    addLayer(nowFrame, true);
-    frames = past.concat([nowFrame]);
+    frames = past.concat([{ t: now, kind: 'now', layer: 'ridge::USCOMP-N0Q-0' }]);
     nowIdx = past.length;
     refreshTimeline();
     render(nowIdx);
-    past.forEach(function (f) { addLayer(f, false); });
-    startChecker();
   }
 
-  // Forecast frames (HRRR, 15-minute steps, up to 3 hours) are appended once the run time is known.
   // hrrrInit: ISO time of the newest HRRR run, or null when unavailable.
   function setForecast(hrrrInit) {
     if (!ready) { pendingForecast = hrrrInit; return; }
@@ -248,8 +190,357 @@
     frames = frames.concat(list);
     refreshTimeline();
     render(pos);
-    list.forEach(function (f) { addLayer(f, false); });
-    startChecker();
+    pump();
+  }
+
+  // ---- Grid: the block of tiles covering the view ---------------------------------------------
+  // Each frame is assembled into one intensity image for this block. Panning inside it costs
+  // nothing; moving outside it (or zooming) starts a new block, while the old one stays on screen
+  // until the new one's current frame is ready.
+  var grid = null, nextGrid = null, gridSeq = 0, loading = 0;
+
+  function wantedGrid() {
+    var b = map.getBounds();
+    var z = Math.max(3, Math.min(9, Math.round(map.getZoom() + 1.5)));
+    for (;;) {
+      var n = 1 << z;
+      var padX = (b.getEast() - b.getWest()) * 0.15;
+      var x0 = Math.floor((b.getWest() - padX + 180) / 360 * n);
+      var x1 = Math.floor((b.getEast() + padX + 180) / 360 * n);
+      var yOf = function (lat) {
+        lat = Math.max(-85, Math.min(85, lat));
+        var r = lat * Math.PI / 180;
+        return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n;
+      };
+      var padY = (b.getNorth() - b.getSouth()) * 0.15;
+      var y0 = Math.max(0, Math.floor(yOf(b.getNorth() + padY)));
+      var y1 = Math.min(n - 1, Math.floor(yOf(b.getSouth() - padY)));
+      var g = { z: z, x0: x0, y0: y0, nx: x1 - x0 + 1, ny: y1 - y0 + 1 };
+      if (g.nx * g.ny <= MAX_TILES || z <= 3) return g;
+      z--;
+    }
+  }
+
+  function covers(g, w) {
+    return g && g.z === w.z && w.x0 >= g.x0 && w.y0 >= g.y0 &&
+      w.x0 + w.nx <= g.x0 + g.nx && w.y0 + w.ny <= g.y0 + g.ny;
+  }
+
+  function viewChanged() {
+    if (!ready) return;
+    var w = wantedGrid();
+    if (covers(nextGrid, w) || (!nextGrid && covers(grid, w))) return;
+    w.id = ++gridSeq; w.W = w.nx * 256; w.H = w.ny * 256;
+    w.data = {}; w.tex = {}; w.flow = {}; w.texOrder = [];
+    if (nextGrid) retire(nextGrid);
+    if (!grid) grid = w; else nextGrid = w;
+    pump();
+  }
+
+  function isLoaded(f, g) { g = g || grid; return !!(g && f && g.data[f.layer] instanceof Uint8Array); }
+
+  // Download frames for the newest grid, closest in time to the slider first.
+  function pump() {
+    var g = nextGrid || grid;
+    if (!g || !frames.length) return;
+    var order = frames.map(function (f, i) { return i; })
+      .sort(function (a, b) { return Math.abs(a - pos) - Math.abs(b - pos); });
+    for (var k = 0; k < order.length && loading < FRAMES_LOADING; k++) {
+      var f = frames[order[k]];
+      if (!g.data[f.layer]) loadFrame(g, f);
+    }
+  }
+
+  function loadFrame(g, f) {
+    g.data[f.layer] = 'loading';
+    loading++;
+    var canvas = document.createElement('canvas');
+    canvas.width = g.W; canvas.height = g.H;
+    var ctx = canvas.getContext('2d', { willReadFrequently: true });
+    var n = 1 << g.z, jobs = [], k = 0;
+    for (var ty = g.y0; ty < g.y0 + g.ny; ty++) {
+      for (var tx = g.x0; tx < g.x0 + g.nx; tx++) {
+        (function (tx, ty) {
+          var wx = ((tx % n) + n) % n;
+          var url = TILE_HOSTS[(k++) % TILE_HOSTS.length] + '/iemv/' + f.layer + '/' + g.z + '/' + wx + '/' + ty + '.png';
+          jobs.push(fetch(url)
+            .then(function (r) { return r.ok ? r.blob() : null; })
+            .then(function (b) { return b ? createImageBitmap(b) : null; })
+            .then(function (img) {
+              if (!img) return;
+              ctx.drawImage(img, (tx - g.x0) * 256, (ty - g.y0) * 256);
+              if (img.close) img.close();
+            })
+            .catch(function () {}));
+        })(tx, ty);
+      }
+    }
+    Promise.all(jobs).then(function () {
+      loading--;
+      if (g.retired) { pump(); return; }
+      var px = ctx.getImageData(0, 0, g.W, g.H).data;
+      var lum = new Uint8Array(g.W * g.H);
+      for (var i = 0, j = 0; i < lum.length; i++, j += 4) lum[i] = px[j];
+      g.data[f.layer] = lum;
+      frameLoaded(g);
+      pump();
+    });
+  }
+
+  function frameLoaded(g) {
+    // Switch to the new grid once whatever the slider points at is ready in it.
+    if (g === nextGrid && isLoaded(frames[Math.round(pos)], g)) {
+      retire(grid);
+      grid = nextGrid; nextGrid = null;
+    }
+    if (g === grid) { requestFlows(); if (!raf && map) map.triggerRepaint(); }
+  }
+
+  var trash = [];
+  function retire(g) { if (!g) return; g.retired = true; trash.push(g); }
+
+  // ---- Motion ----------------------------------------------------------------------------------
+  // For each pair of neighboring frames, a background worker estimates how the rain moved
+  // (block matching on a reduced copy). Drawing then slides both frames along that motion while
+  // blending them, so storms glide across the map instead of fading in and out.
+  var SCALE = 8, FLOW_ENC = 2;   // flow images are 1/8 size; stored as 128 + px / 2 (range +/-254 px)
+  var workerBusy = false, worker = null;
+
+  var WORKER_SRC = [
+    'onmessage = function (e) {',
+    '  var d = e.data, a = d.a, b = d.b, w = d.w, h = d.h, B = 6, R = 6;',
+    '  var bw = Math.ceil(w / B), bh = Math.ceil(h / B);',
+    '  var fx = new Float32Array(bw * bh), fy = new Float32Array(bw * bh), wt = new Float32Array(bw * bh);',
+    '  for (var by = 0; by < bh; by++) for (var bx = 0; bx < bw; bx++) {',
+    '    var x0 = bx * B, y0 = by * B, x1 = Math.min(w, x0 + B), y1 = Math.min(h, y0 + B), e1 = 0;',
+    '    for (var y = y0; y < y1; y++) for (var x = x0; x < x1; x++) e1 += a[y * w + x];',
+    '    if (e1 < (x1 - x0) * (y1 - y0) * 18) continue;',
+    '    var best = 1e12, bdx = 0, bdy = 0;',
+    '    for (var dy = -R; dy <= R; dy++) for (var dx = -R; dx <= R; dx++) {',
+    '      var sad = (dx * dx + dy * dy) * 4;',
+    '      for (var y = y0; y < y1 && sad < best; y++) {',
+    '        var yb = Math.min(h - 1, Math.max(0, y + dy)) * w;',
+    '        for (var x = x0; x < x1; x++) {',
+    '          var xb = Math.min(w - 1, Math.max(0, x + dx));',
+    '          var v = a[y * w + x] - b[yb + xb]; sad += v < 0 ? -v : v;',
+    '        }',
+    '      }',
+    '      if (sad < best) { best = sad; bdx = dx; bdy = dy; }',
+    '    }',
+    '    var i = by * bw + bx; fx[i] = bdx; fy[i] = bdy; wt[i] = e1;',
+    '  }',
+    '  var sx = new Float32Array(bw * bh), sy = new Float32Array(bw * bh), r = 4, s2 = 2 * 2.2 * 2.2;',
+    '  var gx = 0, gy = 0, gw = 0;',
+    '  for (var i = 0; i < wt.length; i++) { gx += fx[i] * wt[i]; gy += fy[i] * wt[i]; gw += wt[i]; }',
+    '  if (gw > 0) { gx /= gw; gy /= gw; }',
+    '  for (var by = 0; by < bh; by++) for (var bx = 0; bx < bw; bx++) {',
+    '    var tx = 0, ty = 0, tw = 0;',
+    '    for (var oy = -r; oy <= r; oy++) for (var ox = -r; ox <= r; ox++) {',
+    '      var X = bx + ox, Y = by + oy; if (X < 0 || Y < 0 || X >= bw || Y >= bh) continue;',
+    '      var j = Y * bw + X; if (!wt[j]) continue;',
+    '      var k = Math.exp(-(ox * ox + oy * oy) / s2) * wt[j]; tx += fx[j] * k; ty += fy[j] * k; tw += k;',
+    '    }',
+    '    var i = by * bw + bx, m = Math.min(1, tw / (gw > 0 ? gw / wt.length * 4 : 1));',
+    '    sx[i] = tw > 0 ? (tx / tw) * m + gx * (1 - m) : gx; sy[i] = tw > 0 ? (ty / tw) * m + gy * (1 - m) : gy;',
+    '  }',
+    '  postMessage({ gid: d.gid, key: d.key, fx: sx, fy: sy, bw: bw, bh: bh, cell: B });',
+    '};'
+  ].join('\n');
+
+  function startWorker() {
+    if (worker) return;
+    try {
+      worker = new Worker(URL.createObjectURL(new Blob([WORKER_SRC], { type: 'text/javascript' })));
+      worker.onmessage = function (e) {
+        workerBusy = false;
+        var d = e.data, g = grid && grid.id === d.gid ? grid : (nextGrid && nextGrid.id === d.gid ? nextGrid : null);
+        if (g) {
+          // Encode motion (in full-size pixels) into an RGBA image for the shader.
+          var rgba = new Uint8Array(d.bw * d.bh * 4), unit = SCALE / FLOW_ENC;   // worker reports reduced-size pixels
+          for (var i = 0; i < d.bw * d.bh; i++) {
+            rgba[i * 4] = Math.max(0, Math.min(255, Math.round(128 + d.fx[i] * unit)));
+            rgba[i * 4 + 1] = Math.max(0, Math.min(255, Math.round(128 + d.fy[i] * unit)));
+            rgba[i * 4 + 3] = 255;
+          }
+          g.flow[d.key] = { rgba: rgba, w: d.bw, h: d.bh };
+          if (!raf) map.triggerRepaint();
+        }
+        requestFlows();
+      };
+    } catch (e) { worker = null; }
+  }
+
+  function shrink(lum, W, H) {
+    var w = W / SCALE, h = H / SCALE, out = new Float32Array(w * h);
+    for (var y = 0; y < H; y++) {
+      var row = (y / SCALE | 0) * w;
+      for (var x = 0; x < W; x++) out[row + (x / SCALE | 0)] += lum[y * W + x];
+    }
+    for (var i = 0; i < out.length; i++) out[i] /= SCALE * SCALE;
+    return out;
+  }
+
+  // Send the next missing pair (closest to the slider) to the worker.
+  function requestFlows() {
+    startWorker();
+    var g = grid;
+    if (!worker || workerBusy || !g) return;
+    var order = [];
+    for (var i = 0; i < frames.length - 1; i++) order.push(i);
+    order.sort(function (a, b) { return Math.abs(a + 0.5 - pos) - Math.abs(b + 0.5 - pos); });
+    for (var k = 0; k < order.length; k++) {
+      var A = frames[order[k]], B = frames[order[k] + 1], key = A.layer + '>' + B.layer;
+      if (g.flow[key] || !isLoaded(A, g) || !isLoaded(B, g)) continue;
+      // Observed radar and the forecast model look different; blend across that seam without motion.
+      if ((A.kind === 'future') !== (B.kind === 'future')) { g.flow[key] = 'none'; continue; }
+      g.flow[key] = 'pending';
+      workerBusy = true;
+      if (!g.small) g.small = {};
+      var a = g.small[A.layer] || (g.small[A.layer] = shrink(g.data[A.layer], g.W, g.H));
+      var b = g.small[B.layer] || (g.small[B.layer] = shrink(g.data[B.layer], g.W, g.H));
+      worker.postMessage({ gid: g.id, key: key, a: a, b: b, w: g.W / SCALE, h: g.H / SCALE });
+      return;
+    }
+  }
+
+  // ---- Drawing (WebGL custom layer) --------------------------------------------------------------
+  // Palette: gray level = dBZ x 3. Teal for light rain through blue and navy, then red and gold.
+  var STOPS = [[8, 0xA6DFD6, 0.30], [15, 0x86D4C9, 0.42], [22, 0x5FB8D6, 0.58], [30, 0x3A8FD9, 0.72],
+    [38, 0x2B4FB8, 0.84], [46, 0xC23B5A, 0.90], [54, 0xE0452F, 0.95], [62, 0xF5C242, 1.00]];
+
+  function paletteBytes() {
+    var out = new Uint8Array(256 * 4);
+    for (var g = 0; g < 256; g++) {
+      var dbz = g / 3, rgb, a;
+      if (dbz < 5) { a = 0; rgb = STOPS[0][1]; }
+      else if (dbz < 8) { a = STOPS[0][2] * (dbz - 5) / 3; rgb = STOPS[0][1]; }
+      else {
+        var s = STOPS.length - 1;
+        for (var i = 0; i < STOPS.length - 1; i++) if (dbz <= STOPS[i + 1][0]) { s = i; break; }
+        if (s === STOPS.length - 1) { rgb = STOPS[s][1]; a = STOPS[s][2]; }
+        else {
+          var t = (dbz - STOPS[s][0]) / (STOPS[s + 1][0] - STOPS[s][0]), c0 = STOPS[s][1], c1 = STOPS[s + 1][1];
+          var ch = function (sh) { return ((c0 >> sh & 255) * (1 - t) + (c1 >> sh & 255) * t); };
+          rgb = (Math.round(ch(16)) << 16) | (Math.round(ch(8)) << 8) | Math.round(ch(0));
+          a = STOPS[s][2] + (STOPS[s + 1][2] - STOPS[s][2]) * t;
+        }
+      }
+      // Premultiplied alpha, as MapLibre blends custom layers.
+      out[g * 4] = (rgb >> 16 & 255) * a; out[g * 4 + 1] = (rgb >> 8 & 255) * a; out[g * 4 + 2] = (rgb & 255) * a; out[g * 4 + 3] = 255 * a;
+    }
+    return out;
+  }
+
+  var VS = 'attribute vec2 p; attribute vec2 t; uniform mat4 m; varying vec2 uv;' +
+    'void main(){ uv = t; gl_Position = m * vec4(p, 0.0, 1.0); }';
+  var FS = '#ifdef GL_FRAGMENT_PRECISION_HIGH\nprecision highp float;\n#else\nprecision mediump float;\n#endif\n' +
+    'uniform sampler2D A, B, F, P; uniform float f; uniform vec2 size; uniform float enc; varying vec2 uv;' +
+    'void main(){' +
+    '  vec2 d = (texture2D(F, uv).xy * 255.0 - 128.0) * enc / size;' +
+    '  float a = texture2D(A, uv - d * f).r;' +
+    '  float b = texture2D(B, uv + d * (1.0 - f)).r;' +
+    '  gl_FragColor = texture2D(P, vec2(mix(a, b, f) * (255.0 / 256.0) + 0.5 / 256.0, 0.5));' +
+    '}';
+
+  var radarLayer = {
+    id: 'radar', type: 'custom', renderingMode: '2d',
+    onAdd: function (m, gl) {
+      function sh(type, src) {
+        var s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+        if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.log('radar shader', gl.getShaderInfoLog(s));
+        return s;
+      }
+      var pr = gl.createProgram();
+      gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS));
+      gl.linkProgram(pr);
+      this.prog = pr;
+      this.loc = {
+        p: gl.getAttribLocation(pr, 'p'), t: gl.getAttribLocation(pr, 't'), m: gl.getUniformLocation(pr, 'm'),
+        A: gl.getUniformLocation(pr, 'A'), B: gl.getUniformLocation(pr, 'B'), F: gl.getUniformLocation(pr, 'F'),
+        P: gl.getUniformLocation(pr, 'P'), f: gl.getUniformLocation(pr, 'f'), size: gl.getUniformLocation(pr, 'size'),
+        enc: gl.getUniformLocation(pr, 'enc')
+      };
+      this.buf = gl.createBuffer();
+      this.palette = this.texture(gl, gl.RGBA, 256, 1, paletteBytes());
+      this.still = this.texture(gl, gl.RGBA, 1, 1, new Uint8Array([128, 128, 0, 255]));
+    },
+    texture: function (gl, format, w, h, bytes) {
+      var t = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.texImage2D(gl.TEXTURE_2D, 0, format, w, h, 0, format, gl.UNSIGNED_BYTE, bytes);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+      return t;
+    },
+    // Frame textures are made on demand and only the last few are kept, to stay light on memory.
+    frameTex: function (gl, g, f) {
+      var t = g.tex[f.layer];
+      if (!t) {
+        t = g.tex[f.layer] = this.texture(gl, gl.LUMINANCE, g.W, g.H, g.data[f.layer]);
+        g.texOrder.push(f.layer);
+        while (g.texOrder.length > 6) {
+          var old = g.texOrder.shift();
+          if (g.tex[old]) { gl.deleteTexture(g.tex[old]); delete g.tex[old]; }
+        }
+      }
+      return t;
+    },
+    flowTex: function (gl, g, key) {
+      var fl = g.flow[key];
+      if (!fl || typeof fl === 'string') return this.still;
+      if (!fl.tex) fl.tex = this.texture(gl, gl.RGBA, fl.w, fl.h, fl.rgba);
+      return fl.tex;
+    },
+    render: function (gl, matrix) {
+      // Free GPU memory of grids that are no longer used.
+      while (trash.length) {
+        var old = trash.pop();
+        for (var k in old.tex) gl.deleteTexture(old.tex[k]);
+        for (var k2 in old.flow) if (old.flow[k2] && old.flow[k2].tex) gl.deleteTexture(old.flow[k2].tex);
+        old.tex = {}; old.data = {}; old.small = null;
+      }
+      var g = grid, pair = framesToDraw(g);
+      if (!g || !pair) return;
+      var n = 1 << g.z, x0 = g.x0 / n, x1 = (g.x0 + g.nx) / n, y0 = g.y0 / n, y1 = (g.y0 + g.ny) / n;
+      gl.useProgram(this.prog);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([x0, y0, 0, 0, x1, y0, 1, 0, x0, y1, 0, 1, x1, y1, 1, 1]), gl.STREAM_DRAW);
+      gl.enableVertexAttribArray(this.loc.p); gl.vertexAttribPointer(this.loc.p, 2, gl.FLOAT, false, 16, 0);
+      gl.enableVertexAttribArray(this.loc.t); gl.vertexAttribPointer(this.loc.t, 2, gl.FLOAT, false, 16, 8);
+      gl.uniformMatrix4fv(this.loc.m, false, matrix);
+      var texA = this.frameTex(gl, g, pair.a), texB = this.frameTex(gl, g, pair.b);
+      var texF = pair.a === pair.b ? this.still : this.flowTex(gl, g, pair.a.layer + '>' + pair.b.layer);
+      var units = [[texA, this.loc.A], [texB, this.loc.B], [texF, this.loc.F], [this.palette, this.loc.P]];
+      for (var u = 0; u < units.length; u++) {
+        gl.activeTexture(gl.TEXTURE0 + u); gl.bindTexture(gl.TEXTURE_2D, units[u][0]); gl.uniform1i(units[u][1], u);
+      }
+      gl.uniform1f(this.loc.f, pair.f);
+      gl.uniform2f(this.loc.size, g.W, g.H);
+      gl.uniform1f(this.loc.enc, FLOW_ENC);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+  };
+
+  // Which two frames to blend, and how far between them. Falls back to the closest loaded frame
+  // so the radar never blinks out while data is still arriving.
+  function framesToDraw(g) {
+    if (!g || !frames.length) return null;
+    var n = frames.length - 1, i = Math.min(n, Math.floor(pos)), f = Math.min(1, pos - i);
+    if (i >= n) { i = n; f = 0; }
+    var A = frames[i], B = frames[Math.min(n, i + 1)];
+    if (isLoaded(A, g) && (f === 0 || isLoaded(B, g))) return { a: A, b: f === 0 ? A : B, f: f };
+    var c = Math.round(pos);
+    for (var d = 0; d <= n; d++) {
+      if (isLoaded(frames[c - d], g)) return { a: frames[c - d], b: frames[c - d], f: 0 };
+      if (isLoaded(frames[c + d], g)) return { a: frames[c + d], b: frames[c + d], f: 0 };
+    }
+    return null;
   }
 
   function refreshTimeline() {
@@ -280,49 +571,13 @@
     });
   }
 
-  // Playback position is fractional: between two frames, both are drawn and crossfaded by the fraction,
-  // so the radar dissolves continuously instead of jumping from frame to frame.
-  var pos = 0, shown = {}, raf = null, lastTs = 0, holdUntil = 0, waitSince = 0;
 
-  function setOpacity(f, v) {
-    if (!f.id) return;   // layer not added yet
-    v = Math.max(0.001, v);
-    if (shown[f.id] === v || !map.getLayer(f.id)) return;
-    shown[f.id] = v;
-    map.setPaintProperty(f.id, 'raster-opacity', v);
-  }
-
-  function isLoaded(f) { return !!(f && f.id && loadedFrames[f.id]); }
-
-  // Closest frame to index i whose tiles are in, or -1 if none yet.
-  function nearestLoaded(i) {
-    for (var d = 0; d < frames.length; d++) {
-      if (isLoaded(frames[i - d])) return i - d;
-      if (isLoaded(frames[i + d])) return i + d;
-    }
-    return -1;
-  }
-
+  // ---- Playback --------------------------------------------------------------------------------
   function render(p) {
     if (!frames.length) return;
     var n = frames.length - 1;
     pos = Math.max(0, Math.min(n, p));
-    var i = Math.floor(pos), f = pos - i;
-    if (i >= n) { i = n; f = 0; }
-    // Crossfade only between frames that have loaded. Otherwise keep showing the closest frame that
-    // has, so the radar never blinks out while tiles are still arriving.
-    var show = {};
-    if (isLoaded(frames[i]) && (f === 0 || isLoaded(frames[i + 1]))) {
-      show[i] = 1 - f;
-      if (f > 0) show[i + 1] = f;
-    } else {
-      var j = nearestLoaded(Math.round(pos));
-      show[j >= 0 ? j : Math.round(pos)] = 1;   // nothing loaded yet: let the current frame fill in
-    }
-    for (var k = 0; k <= n; k++) {
-      if (show[k]) setActive(frames[k], true);
-      setOpacity(frames[k], (show[k] || 0) * OPACITY);
-    }
+    var i = Math.min(n, Math.floor(pos)), f = pos - i;
     document.getElementById('slider').value = pos;
     var a = frames[i], b = frames[Math.min(n, i + 1)];
     var t = a.t + (b.t - a.t) * f;
@@ -330,6 +585,8 @@
     var label = new Date(t).toLocaleTimeString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
     var kind = near.kind === 'now' ? 'Latest radar' : near.kind === 'past' ? 'Observed' : 'Forecast';
     document.getElementById('time').innerHTML = label + '<span id="kind">' + kind + '</span>';
+    if (nextGrid && isLoaded(frames[Math.round(pos)], nextGrid)) frameLoaded(nextGrid);
+    if (map && ready) map.triggerRepaint();
   }
 
   // Advance in weather-time, so 5-minute observed steps and 15-minute forecast steps play at the same pace.
@@ -343,7 +600,7 @@
     var i = Math.floor(pos);
     var gapMin = Math.max(1, (frames[Math.min(n, i + 1)].t - frames[i].t) / 60000);
     var next = pos + dt * MIN_PER_SEC / gapMin;
-    // Wait (up to 3 s) at a frame boundary if the next frame's tiles haven't arrived yet.
+    // Wait (up to 3 s) at a frame boundary if the next frame hasn't arrived yet.
     if (Math.floor(next) > i && !isLoaded(frames[Math.min(n, i + 1)])) {
       if (!waitSince) waitSince = ts;
       if (ts - waitSince < 3000) { render(i); raf = requestAnimationFrame(tick); return; }
@@ -361,10 +618,12 @@
     if (pos >= frames.length - 1) render(0);
     raf = requestAnimationFrame(tick);
   }
+
   function stop() {
     if (raf) cancelAnimationFrame(raf);
     raf = null;
     document.getElementById('play').innerHTML = '&#9654;';
+    pump(); requestFlows();
   }
 
   // Satellite imagery sits under the radar; labels switch to light text for contrast.
@@ -379,10 +638,7 @@
         map.addSource('sat', { type: 'raster', tileSize: 256, maxzoom: 18,
           tiles: [PROXY + '/esri/{z}/{y}/{x}'], attribution: 'Imagery &copy; Esri' });
       }
-      var firstRadar = frames.filter(function (f) { return f.id && map.getLayer(f.id); })[0];
-      map.addLayer({ id: 'sat', type: 'raster', source: 'sat' }, firstRadar ? firstRadar.id : firstLabelLayer());
-      // Keep satellite below every radar layer, including ones added later.
-      frames.forEach(function (f) { if (f.id && map.getLayer(f.id)) map.moveLayer(f.id, firstLabelLayer()); });
+      map.addLayer({ id: 'sat', type: 'raster', source: 'sat' }, 'radar');
       symbols.forEach(function (l) {
         try {
           labelPaint[l.id] = [map.getPaintProperty(l.id, 'text-color'), map.getPaintProperty(l.id, 'text-halo-color')];
@@ -408,7 +664,10 @@
   document.getElementById('now').addEventListener('click', function () { stop(); render(nowIdx); });
   document.getElementById('bMap').addEventListener('click', function () { setSatellite(false); });
   document.getElementById('bSat').addEventListener('click', function () { setSatellite(true); });
-  document.getElementById('slider').addEventListener('input', function (e) { stop(); render(parseFloat(e.target.value)); });
+  document.getElementById('slider').addEventListener('input', function (e) {
+    if (raf) stop();
+    render(parseFloat(e.target.value));
+  });
 </script>
 </body>
 </html>
