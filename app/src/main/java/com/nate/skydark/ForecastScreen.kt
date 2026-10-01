@@ -53,7 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
-import kotlin.math.sqrt
+import kotlin.math.ln
 
 @Composable
 fun ForecastScreen(
@@ -233,7 +233,7 @@ private fun NextHour(f: Forecast) {
     val cs = MaterialTheme.colorScheme
     Panel {
         SectionTitle("Next hour")
-        Text(nextHourSummary(f.minutely), fontSize = 17.sp, fontWeight = FontWeight.Medium)
+        Text(nextHourSummary(f.minutely, f.hourly, f.zone), fontSize = 17.sp, fontWeight = FontWeight.Medium)
         if (f.minutely.size >= 2) {
             PrecipGraph(f.minutely, Modifier.fillMaxWidth().height(100.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -245,8 +245,9 @@ private fun NextHour(f: Forecast) {
     }
 }
 
-/** Precip scale: square root so light rain is visible but heavy rain still tops out. */
-private fun precipScale(mm: Double): Float = sqrt(mm.coerceIn(0.0, 10.0) / 10.0).toFloat()
+/** Precip scale: logarithmic so even drizzle (0.05 mm/h) shows, while heavy rain still tops out. */
+private fun precipScale(mm: Double): Float =
+    (ln(1.0 + mm.coerceIn(0.0, 10.0) / 0.05) / ln(1.0 + 10.0 / 0.05)).toFloat()
 
 @Composable
 private fun PrecipGraph(m: List<Minute>, modifier: Modifier) {
@@ -264,18 +265,20 @@ private fun PrecipGraph(m: List<Minute>, modifier: Modifier) {
                 drawLine(grid, Offset(0f, y), Offset(w, y), strokeWidth = 1.dp.toPx(), pathEffect = dash)
             }
             drawLine(grid, Offset(0f, ht), Offset(w, ht), strokeWidth = 1.dp.toPx())
-            val path = Path().apply {
+            // Two layers: pale = how much would fall if it happens, solid = weighted by its chance.
+            fun area(weighted: Boolean) = Path().apply {
                 moveTo(0f, ht)
                 m.forEachIndexed { i, p ->
                     val mm = if (p.mm.isNaN()) 0.0 else p.mm
                     val pr = if (p.prob.isNaN()) 1.0 else p.prob.coerceIn(0.0, 1.0)
                     val x = w * i / (m.size - 1)
-                    lineTo(x, ht - precipScale(mm * pr) * ht)
+                    lineTo(x, ht - precipScale(if (weighted) mm * pr else mm) * ht)
                 }
                 lineTo(w, ht)
                 close()
             }
-            drawPath(path, fill.copy(alpha = 0.85f))
+            drawPath(area(weighted = false), fill.copy(alpha = 0.28f))
+            drawPath(area(weighted = true), fill.copy(alpha = 0.85f))
         }
         listOf("Light" to LIGHT_MM, "Med" to MODERATE_MM, "Heavy" to HEAVY_MM).forEach { (label, lvl) ->
             Text(
