@@ -56,6 +56,7 @@
 | Esri World Imagery | Satellite view on the radar map |
 | [Open-Meteo](https://open-meteo.com/en/docs/geocoding-api) | City search (GeoNames data) |
 | [MapLibre GL JS](https://maplibre.org) (BSD-3) | Map rendering, bundled in the app |
+| [Google Sans Flex](https://github.com/googlefonts/googlesans-flex) (SIL OFL 1.1) | Current-temperature numerals |
 
 Radar colors are the app's own palette: each tile is converted from the standard NWS reflectivity scale on the phone and smoothed to soften the data grid. Playback is motion-interpolated: the app estimates how the rain moved between frames and slides it along that path on the GPU, so storms glide instead of jumping.
 

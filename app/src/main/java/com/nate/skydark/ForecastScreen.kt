@@ -55,6 +55,8 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
@@ -176,6 +178,9 @@ fun ForecastScreen(
     }
 }
 
+/** Big current temperature: Google Sans Flex (SIL OFL), rounded, SemiBold, digits only. */
+private val TempFont = FontFamily(Font(R.font.temp_display, FontWeight.SemiBold))
+
 private fun updatedLabel(t: Long): String {
     val mins = ((System.currentTimeMillis() - t) / 60_000).toInt()
     return when {
@@ -207,7 +212,7 @@ private fun Hero(f: Forecast) {
             WeatherIcon(c.icon, Modifier.size(78.dp), bg = cs.background)
             Spacer(Modifier.width(14.dp))
             Column {
-                Text(deg(c.temp), fontSize = 64.sp, lineHeight = 64.sp, fontWeight = FontWeight.Normal)
+                Text(deg(c.temp), fontSize = 68.sp, lineHeight = 70.sp, fontFamily = TempFont, fontWeight = FontWeight.SemiBold, letterSpacing = (-1).sp)
                 Text("Feels ${deg(c.feels)}", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = cs.onSurfaceVariant)
             }
         }
