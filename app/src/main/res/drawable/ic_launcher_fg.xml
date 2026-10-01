@@ -1,21 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Original mark: a raindrop over a short horizon line. 108dp adaptive canvas, art inside the 66dp safe zone. -->
+<!-- Original mark: sun behind a cloud, white on navy. 108dp adaptive canvas, art inside the 66dp safe zone. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#FF8EC2FF"
-        android:pathData="M54,29 C54,29 38,48 38,60 A16,16 0 0 0 70,60 C70,48 54,29 54,29 Z" />
-    <path
-        android:strokeColor="#E6FFFFFF"
-        android:strokeWidth="3"
-        android:strokeLineCap="round"
-        android:pathData="M45,61 A9,9 0 0 0 52,69" />
-    <path
-        android:strokeColor="#FF4F6E99"
-        android:strokeWidth="3"
-        android:strokeLineCap="round"
-        android:pathData="M40,80 L68,80" />
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="4.5" android:strokeLineCap="round" android:pathData="M46.00,33.00 L46.00,28.50" />
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="4.5" android:strokeLineCap="round" android:pathData="M35.39,37.39 L32.21,34.21" />
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="4.5" android:strokeLineCap="round" android:pathData="M56.61,37.39 L59.79,34.21" />
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="4.5" android:strokeLineCap="round" android:pathData="M31.00,48.00 L26.50,48.00" />
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="4.5" android:strokeLineCap="round" android:pathData="M35.39,58.61 L32.21,61.79" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M36.50,48.00 a9.5,9.5 0 1,0 19.0,0 a9.5,9.5 0 1,0 -19.0,0 Z" />
+    <!-- Navy outline of the cloud cuts a small gap where it overlaps the sun -->
+    <path android:fillColor="#FF21407A" android:strokeColor="#FF21407A" android:strokeWidth="5" android:pathData="M49.5,61 H70.5 A8.5,8.5 0 0 1 79,69.5 V69.5 A8.5,8.5 0 0 1 70.5,78 H49.5 A8.5,8.5 0 0 1 41,69.5 V69.5 A8.5,8.5 0 0 1 49.5,61 Z" />
+    <path android:fillColor="#FF21407A" android:strokeColor="#FF21407A" android:strokeWidth="5" android:pathData="M51.50,58.00 a13,13 0 1,0 26,0 a13,13 0 1,0 -26,0 Z" />
+    <path android:fillColor="#FF21407A" android:strokeColor="#FF21407A" android:strokeWidth="5" android:pathData="M41.50,65.00 a9,9 0 1,0 18,0 a9,9 0 1,0 -18,0 Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M49.5,61 H70.5 A8.5,8.5 0 0 1 79,69.5 V69.5 A8.5,8.5 0 0 1 70.5,78 H49.5 A8.5,8.5 0 0 1 41,69.5 V69.5 A8.5,8.5 0 0 1 49.5,61 Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M51.50,58.00 a13,13 0 1,0 26,0 a13,13 0 1,0 -26,0 Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M41.50,65.00 a9,9 0 1,0 18,0 a9,9 0 1,0 -18,0 Z" />
 </vector>

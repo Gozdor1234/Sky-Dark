@@ -259,21 +259,11 @@ private fun NextHour(f: Forecast) {
         if (minutes.size >= 2) {
             PrecipGraph(minutes, Modifier.fillMaxWidth().height(100.dp))
             AxisLabels(listOf("Now", "30min", "1hr", "1.5hr", "2hr", "2.5hr", "3hr"))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.width(14.dp).height(2.dp).background(CHANCE_COLOR))
-                Spacer(Modifier.width(6.dp))
-                Text("Chance of precipitation", fontSize = 11.sp, color = cs.onSurfaceVariant)
-                Spacer(Modifier.width(14.dp))
-                Box(Modifier.width(14.dp).height(8.dp).clip(RoundedCornerShape(2.dp)).background(SkyColors.rain.copy(alpha = 0.85f)))
-                Spacer(Modifier.width(6.dp))
-                Text("Expected amount", fontSize = 11.sp, color = cs.onSurfaceVariant)
-            }
         }
     }
 }
 
 private const val OUTLOOK_MIN = 180
-private val CHANCE_COLOR = Color(0xFFF2B33D)
 
 /** Labels spread evenly under the graph: first flush left, last flush right, the rest centered on their tick. */
 @Composable
@@ -365,33 +355,7 @@ private fun PrecipGraph(m: List<Minute>, modifier: Modifier) {
             }
             drawPath(area(weighted = false), fill.copy(alpha = 0.28f))
             drawPath(area(weighted = true), fill.copy(alpha = 0.85f))
-            // Chance of precipitation on its own 0-100% scale (bottom to top of the graph).
-            val chance = Path()
-            m.forEachIndexed { i, p ->
-                val pr = if (p.prob.isNaN()) 0.0 else p.prob.coerceIn(0.0, 1.0)
-                val x = w * i / (m.size - 1)
-                val y = ht - (pr * ht).toFloat()
-                if (i == 0) chance.moveTo(x, y) else chance.lineTo(x, y)
-            }
-            drawPath(chance, CHANCE_COLOR, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
         }
-        // Start and end values, just above the line
-        val first = m.first().prob.takeUnless { it.isNaN() } ?: 0.0
-        val last = m.last().prob.takeUnless { it.isNaN() } ?: 0.0
-        Text(
-            pct(first),
-            fontSize = 10.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = CHANCE_COLOR,
-            modifier = Modifier.offset(x = 44.dp, y = (h * (1f - first.toFloat()) - 16.dp).coerceAtLeast(0.dp)),
-        )
-        Text(
-            pct(last),
-            fontSize = 10.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = CHANCE_COLOR,
-            modifier = Modifier.align(Alignment.TopEnd).offset(y = (h * (1f - last.toFloat()) - 16.dp).coerceAtLeast(0.dp)),
-        )
         listOf("Light" to LIGHT_MM, "Med" to MODERATE_MM, "Heavy" to HEAVY_MM).forEach { (label, lvl) ->
             Text(
                 label,
