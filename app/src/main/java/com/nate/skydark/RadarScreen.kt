@@ -120,8 +120,11 @@ private object RadarWebHolder {
             webViewClient = object : WebViewClient() {
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                     val url = request.url
-                    if (url.host != ASSET_HOST) return null
-                    return assets.shouldInterceptRequest(url) ?: TileProxy.handle(url.encodedPath ?: "")
+                    val host = url.host ?: return null
+                    // The page itself on the main host; radar tiles also on a./b./c./d. subdomains (more parallel fetches).
+                    if (host == ASSET_HOST) return assets.shouldInterceptRequest(url) ?: TileProxy.handle(url.encodedPath ?: "")
+                    if (host.endsWith(".$ASSET_HOST")) return TileProxy.handle(url.encodedPath ?: "")
+                    return null
                 }
 
                 override fun onPageFinished(view: WebView, url: String?) {

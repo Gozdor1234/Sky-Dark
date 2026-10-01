@@ -84,6 +84,10 @@
 <script>
   // Tiles are fetched by the app (same origin) to avoid cross-site restrictions in the WebView.
   var PROXY = 'https://appassets.androidplatform.net';
+  // Radar tiles are spread over a few host names so the WebView fetches more of them in parallel
+  // (browsers cap simultaneous requests per host). The app answers all of them the same way.
+  var TILE_HOSTS = ['a', 'b', 'c', 'd'].map(function (h) { return 'https://' + h + '.appassets.androidplatform.net'; });
+  var PREFETCH = 3;   // frames loading in the background at once
   var OPACITY = 1.0;        // tiles carry their own transparency
   var MIN_PER_SEC = 25;     // minutes of weather shown per second of playback
   var map = null, ready = false, dark = false, satellite = false, labelPaint = {};
@@ -106,14 +110,9 @@
     map.touchZoomRotate.disableRotation();
     var dot = document.createElement('div'); dot.className = 'pin';
     new maplibregl.Marker({ element: dot }).setLngLat([lon, lat]).addTo(map);
-    // Remember which radar frames have finished loading their tiles at least once.
-    map.on('sourcedata', function (e) {
-      var id = e.sourceId;
-      if (!id || id.indexOf('rv') !== 0 || loadedFrames[id]) return;
-      var done = e.isSourceLoaded;
-      if (done === undefined) { try { done = map.isSourceLoaded(id); } catch (err) { done = false; } }
-      if (done) { loadedFrames[id] = true; if (!raf) render(pos); }
-    });
+    // While the view moves, only the frame on screen fetches tiles, so it fills in first.
+    map.on('movestart', function () { pauseHidden(); });
+    map.on('moveend', function () { loadedFrames = {}; pauseHidden(); render(pos); startChecker(); });
     map.on('load', function () {
       ready = true;
       if (!dark) mutedBase();
@@ -161,8 +160,9 @@
     f.id = 'rv' + (layerSeq++);
     // tileSize 128 asks for one zoom level deeper, so tiles stay crisp on high-density screens.
     map.addSource(f.id, { type: 'raster', tileSize: 128, maxzoom: 10,
-      tiles: [PROXY + '/iem/' + f.layer + '/{z}/{x}/{y}.png'] });
+      tiles: TILE_HOSTS.map(function (h) { return h + '/iem/' + f.layer + '/{z}/{x}/{y}.png'; }) });
     map.addLayer({ id: f.id, type: 'raster', source: f.id,
+      layout: { visibility: visible ? 'visible' : 'none' },
       paint: {
         'raster-opacity': visible ? OPACITY : 0.001,
         'raster-opacity-transition': { duration: 0, delay: 0 },
@@ -170,12 +170,46 @@
         'raster-resampling': 'linear'
       } }, firstLabelLayer());
     shown[f.id] = visible ? OPACITY : 0.001;
+    active[f.id] = visible ? Date.now() : 0;
   }
 
-  // Run fn once the map has finished loading what's on screen (so "now" wins the bandwidth race).
-  function whenSettled(fn) {
-    if (map.areTilesLoaded()) setTimeout(fn, 0); else map.once('idle', fn);
+  // ---- Loading order -------------------------------------------------------------------------
+  // A frame's layer is switched on ("active") only when it should fetch tiles. The frame on screen
+  // always is; the rest are switched on a few at a time, closest to the current time first.
+  var active = {}, checker = null;
+
+  function setActive(f, on) {
+    if (!f || !f.id || !map.getLayer(f.id)) return;
+    if (!!active[f.id] === on) return;
+    active[f.id] = on ? Date.now() : 0;
+    map.setLayoutProperty(f.id, 'visibility', on ? 'visible' : 'none');
+    if (on) startChecker();
   }
+
+  // Switch off every frame except the ones currently drawn.
+  function pauseHidden() {
+    frames.forEach(function (f) { if (!(shown[f.id] > 0.01)) setActive(f, false); });
+  }
+
+  // Mark active frames whose tiles have all arrived, then top up the background loading.
+  function check() {
+    var waiting = 0;
+    frames.forEach(function (f) {
+      if (!f.id || !active[f.id] || loadedFrames[f.id]) return;
+      var done = false;
+      try { done = Date.now() - active[f.id] > 150 && map.isSourceLoaded(f.id); } catch (e) {}
+      if (done) { loadedFrames[f.id] = true; if (!raf) render(pos); } else waiting++;
+    });
+    var center = Math.round(pos);
+    var queue = frames.map(function (f, i) { return i; })
+      .filter(function (i) { var f = frames[i]; return f.id && !active[f.id]; })
+      .sort(function (a, b) { return Math.abs(a - center) - Math.abs(b - center); });
+    while (waiting < PREFETCH && queue.length) { setActive(frames[queue.shift()], true); waiting++; }
+    if (!waiting && !queue.length) { clearInterval(checker); checker = null; }
+  }
+
+  function startChecker() { if (!checker) checker = setInterval(check, 200); }
+
 
   // Latest radar first, alone, so it appears as fast as possible; then the past hour behind it.
   function buildObserved() {
@@ -192,7 +226,8 @@
     nowIdx = past.length;
     refreshTimeline();
     render(nowIdx);
-    whenSettled(function () { past.forEach(function (f) { addLayer(f, false); }); });
+    past.forEach(function (f) { addLayer(f, false); });
+    startChecker();
   }
 
   // Forecast frames (HRRR, 15-minute steps, up to 3 hours) are appended once the run time is known.
@@ -213,7 +248,8 @@
     frames = frames.concat(list);
     refreshTimeline();
     render(pos);
-    whenSettled(function () { list.forEach(function (f) { addLayer(f, false); }); });
+    list.forEach(function (f) { addLayer(f, false); });
+    startChecker();
   }
 
   function refreshTimeline() {
@@ -283,7 +319,10 @@
       var j = nearestLoaded(Math.round(pos));
       show[j >= 0 ? j : Math.round(pos)] = 1;   // nothing loaded yet: let the current frame fill in
     }
-    for (var k = 0; k <= n; k++) setOpacity(frames[k], (show[k] || 0) * OPACITY);
+    for (var k = 0; k <= n; k++) {
+      if (show[k]) setActive(frames[k], true);
+      setOpacity(frames[k], (show[k] || 0) * OPACITY);
+    }
     document.getElementById('slider').value = pos;
     var a = frames[i], b = frames[Math.min(n, i + 1)];
     var t = a.t + (b.t - a.t) * f;
