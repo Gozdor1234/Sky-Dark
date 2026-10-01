@@ -23,9 +23,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,7 +33,9 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -55,6 +57,7 @@ import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 import kotlin.math.ln
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ForecastScreen(
     vm: WeatherViewModel,
@@ -65,6 +68,8 @@ fun ForecastScreen(
     val f = vm.forecast
     var metric by rememberSaveable { mutableStateOf(Metric.TEMP) }
     var expandedDay by rememberSaveable { mutableIntStateOf(-1) }
+    var pulled by remember { mutableStateOf(false) }
+    LaunchedEffect(vm.loading) { if (!vm.loading) pulled = false }
     val cs = MaterialTheme.colorScheme
 
     Column(Modifier.fillMaxSize()) {
@@ -87,19 +92,26 @@ fun ForecastScreen(
                 }
                 if (f != null) Text(updatedLabel(f.fetchedAt), fontSize = 12.sp, color = cs.onSurfaceVariant)
             }
-            IconButton(onClick = { vm.refresh(force = true) }) {
-                Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-            }
             IconButton(onClick = onSettings) {
                 Icon(Icons.Default.Settings, contentDescription = "Settings")
             }
         }
-        if (vm.loading) {
+        // Thin bar for background refreshes; a pull shows its own spinner instead.
+        if (vm.loading && !pulled) {
             LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp))
         } else {
             Spacer(Modifier.height(2.dp))
         }
 
+        PullToRefreshBox(
+            isRefreshing = pulled && vm.loading,
+            onRefresh = {
+                pulled = true
+                vm.refresh(force = true)
+                if (!vm.loading) pulled = false   // nothing to fetch (e.g. no API key yet)
+            },
+            modifier = Modifier.fillMaxSize(),
+        ) {
         LazyColumn(
             Modifier.fillMaxSize(),
             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 32.dp),
@@ -151,6 +163,7 @@ fun ForecastScreen(
                     )
                 }
             }
+        }
         }
     }
 }
