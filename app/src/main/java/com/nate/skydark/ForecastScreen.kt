@@ -393,7 +393,7 @@ private fun Details(f: Forecast) {
 @Composable
 private fun Credits() {
     Text(
-        "Forecasts from Pirate Weather. Radar from RainViewer. Place search from Open-Meteo (GeoNames data).",
+        "Forecasts from Pirate Weather. Radar from NWS NEXRAD and NOAA HRRR via Iowa Environmental Mesonet. Place search from Open-Meteo (GeoNames data).",
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
         fontSize = 11.sp,
         color = MaterialTheme.colorScheme.onSurfaceVariant,

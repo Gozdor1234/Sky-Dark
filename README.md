@@ -5,7 +5,7 @@ color-coded 24-hour timeline, and a tap-to-expand week view. No ads, no accounts
 
 Forecast data comes from [Pirate Weather](https://pirateweather.net) (free API key required,
 entered in the app's Settings). City search uses Open-Meteo's free geocoding API.
-The Radar tab shows the past 2 hours of radar from RainViewer (personal-use API) over OpenFreeMap base maps (OpenMapTiles, OpenStreetMap data), drawn with MapLibre GL JS (bundled in assets, BSD-3 license).
+The Radar tab shows the past hour of observed NWS NEXRAD radar plus up to 3 hours of NOAA HRRR forecast radar (US only), both via the Iowa Environmental Mesonet tile service, over OpenFreeMap base maps or Esri World Imagery satellite, drawn with MapLibre GL JS (bundled in assets, BSD-3 license).
 
 ## Getting the app
 Every push to `main` builds a signed APK with GitHub Actions and publishes it under

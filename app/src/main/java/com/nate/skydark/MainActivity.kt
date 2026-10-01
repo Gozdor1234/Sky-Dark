@@ -1,6 +1,7 @@
 package com.nate.skydark
 
 import android.Manifest
+import android.net.http.HttpResponseCache
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -29,12 +30,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import java.io.File
 
 class MainActivity : ComponentActivity() {
     private val vm: WeatherViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Disk cache for map/radar tiles fetched through the radar tab's tile proxy.
+        if (HttpResponseCache.getInstalled() == null) {
+            runCatching { HttpResponseCache.install(File(cacheDir, "http"), 50L * 1024 * 1024) }
+        }
         enableEdgeToEdge()
         setContent {
             SkyTheme { App(vm) }

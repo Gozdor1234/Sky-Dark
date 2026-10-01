@@ -5,125 +5,197 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <link rel="stylesheet" href="maplibre-gl.css">
 <style>
-  :root { --bg: #f3f5f8; --panel: rgba(255,255,255,0.94); --text: #181c22; --muted: #5b6472; --accent: #2e6bd1; }
-  body.dark { --bg: #0e1116; --panel: rgba(23,27,34,0.94); --text: #e5e8ed; --muted: #9aa4b2; --accent: #86b4ff; }
+  :root { --bg: #e7e4df; --panel: rgba(255,255,255,0.95); --text: #181c22; --muted: #5b6472; --accent: #2e6bd1; --tick: #c9cdd4; }
+  body.dark { --bg: #0e1116; --panel: rgba(23,27,34,0.95); --text: #e5e8ed; --muted: #9aa4b2; --accent: #86b4ff; --tick: #3a4250; }
   html, body { margin: 0; height: 100%; background: var(--bg); font-family: sans-serif; color: var(--text); overflow: hidden; }
   #map { position: absolute; inset: 0; background: var(--bg); }
-  .bar {
-    position: absolute; left: 12px; right: 12px; bottom: 28px; z-index: 5;
-    background: var(--panel); border-radius: 16px; padding: 10px 14px;
-    display: flex; align-items: center; gap: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+  .seg {
+    position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 5;
+    display: flex; background: var(--panel); border-radius: 18px; padding: 3px; box-shadow: 0 1px 6px rgba(0,0,0,0.15);
   }
+  .seg button {
+    border: none; background: transparent; color: var(--muted); font-size: 13px; font-weight: 600;
+    padding: 6px 14px; border-radius: 15px;
+  }
+  .seg button.on { background: var(--accent); color: #fff; }
+  body.dark .seg button.on { color: #0b1f44; }
+  .legend {
+    position: absolute; top: 56px; left: 10px; z-index: 5; background: var(--panel); border-radius: 10px;
+    padding: 6px 8px; font-size: 10px; color: var(--muted); display: flex; flex-direction: column; gap: 3px;
+  }
+  .legend .ramp { width: 90px; height: 6px; border-radius: 3px;
+    background: linear-gradient(90deg, #04e9e7, #019ff4, #02fd02, #01c501, #fdf802, #fd9500, #fd0000, #bc0000, #f800fd); }
+  .legend .ends { display: flex; justify-content: space-between; }
+  .bar {
+    position: absolute; left: 10px; right: 10px; bottom: 26px; z-index: 5;
+    background: var(--panel); border-radius: 16px; padding: 10px 12px 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+  }
+  .row { display: flex; align-items: center; gap: 10px; }
   #play {
-    width: 40px; height: 40px; border-radius: 20px; border: none; flex: none;
-    background: var(--accent); color: #fff; font-size: 16px; line-height: 40px; padding: 0;
+    width: 36px; height: 36px; border-radius: 18px; border: none; flex: none;
+    background: var(--accent); color: #fff; font-size: 14px; line-height: 36px; padding: 0;
   }
   body.dark #play { color: #0b1f44; }
-  .mid { flex: 1; min-width: 0; }
-  #time { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
-  #ago { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 6px; }
-  input[type=range] { width: 100%; margin: 0; accent-color: var(--accent); }
+  #time { flex: 1; text-align: center; font-size: 15px; font-weight: 700; }
+  #kind { display: block; font-size: 11px; font-weight: 500; color: var(--muted); }
+  #now { border: none; background: none; color: var(--accent); font-size: 14px; font-weight: 700; padding: 6px 4px; }
+  #slider { width: 100%; margin: 8px 0 2px; accent-color: var(--accent); }
+  .ticks { position: relative; height: 14px; font-size: 9px; color: var(--muted); }
+  .ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+  .ticks span.nowtick { color: var(--accent); font-weight: 700; }
   .note {
-    position: absolute; top: 12px; left: 12px; right: 12px; z-index: 6; display: none;
+    position: absolute; top: 56px; left: 10px; right: 10px; z-index: 6; display: none;
     background: var(--panel); border-radius: 12px; padding: 10px 14px; font-size: 14px;
-  }
-  .scale {
-    position: absolute; top: 12px; right: 12px; z-index: 5; background: var(--panel);
-    border-radius: 10px; padding: 6px 10px; font-size: 11px; color: var(--muted);
   }
   .pin {
     width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff;
-    background: var(--accent); box-shadow: 0 0 0 1px rgba(0,0,0,0.25);
+    background: var(--accent); box-shadow: 0 0 0 1px rgba(0,0,0,0.3);
   }
   .maplibregl-ctrl-attrib { font-size: 9px; }
 </style>
 </head>
 <body>
 <div id="map"></div>
-<div class="scale">Past 2 hours</div>
+<div class="seg"><button id="bMap" class="on">Map</button><button id="bSat">Satellite</button></div>
+<div class="legend"><div class="ramp"></div><div class="ends"><span>Light</span><span>Heavy</span></div></div>
 <div class="note" id="note"></div>
 <div class="bar">
-  <button id="play" aria-label="Play">&#9654;</button>
-  <div class="mid">
+  <div class="row">
+    <button id="play" aria-label="Play">&#9654;</button>
     <div id="time">Loading radar...</div>
-    <input type="range" id="slider" min="0" max="0" value="0">
+    <button id="now">NOW</button>
   </div>
+  <input type="range" id="slider" min="0" max="0" value="0">
+  <div class="ticks" id="ticks"></div>
 </div>
 <script src="maplibre-gl.js"></script>
 <script>
-  var map = null, ready = false, pending = null;
-  var frames = [], idx = 0, timer = null;
-  var OPACITY = 0.75;
+  // Tiles are fetched by the app (same origin) to avoid cross-site restrictions in the WebView.
+  var PROXY = 'https://appassets.androidplatform.net';
+  var OPACITY = 0.7;
+  var map = null, ready = false, pendingInit = undefined, dark = false;
+  var frames = [], idx = 0, nowIdx = 0, timer = null, satellite = false, labelPaint = {};
 
-  // Called by the app once the page has loaded.
-  function init(lat, lon, dark) {
+  function init(lat, lon, isDark) {
+    dark = !!isDark;
     if (dark) document.body.classList.add('dark');
     try {
       map = new maplibregl.Map({
         container: 'map',
-        // OpenFreeMap: free vector base maps, no key needed.
         style: 'https://tiles.openfreemap.org/styles/' + (dark ? 'dark' : 'positron'),
-        center: [lon, lat],
-        zoom: 6.5,
-        minZoom: 3,
-        maxZoom: 10,
-        dragRotate: false,
-        pitchWithRotate: false,
-        attributionControl: { compact: true, customAttribution: 'Radar: RainViewer' }
+        center: [lon, lat], zoom: 6.3, minZoom: 3, maxZoom: 11,
+        dragRotate: false, pitchWithRotate: false,
+        attributionControl: { compact: true, customAttribution: 'Radar: NWS NEXRAD, NOAA HRRR via Iowa Environmental Mesonet' }
       });
-    } catch (e) {
-      showError('This phone could not start the map (' + e.message + ').');
-      return;
-    }
+    } catch (e) { showError('This phone could not start the map (' + e.message + ').'); return; }
     map.touchZoomRotate.disableRotation();
-    var dot = document.createElement('div');
-    dot.className = 'pin';
+    var dot = document.createElement('div'); dot.className = 'pin';
     new maplibregl.Marker({ element: dot }).setLngLat([lon, lat]).addTo(map);
     map.on('load', function () {
       ready = true;
-      if (pending) { var p = pending; pending = null; setFrames(p.host, p.list); }
+      if (!dark) mutedBase();
+      if (pendingInit !== undefined) { var p = pendingInit; pendingInit = undefined; setTimeline(p); }
     });
-    map.on('error', function (e) { console.log('map error', e && e.error && e.error.message); });
     window.addEventListener('resize', function () { map.resize(); });
     setTimeout(function () { map.resize(); }, 300);
-    setTimeout(function () {
-      if (!ready) showError("Couldn't load the base map. Check your connection and reopen this tab.");
-    }, 15000);
+    setTimeout(function () { if (!ready) showError("Couldn't load the map. Check your connection and reopen this tab."); }, 15000);
   }
 
-  // Radar goes under the base map's labels so place names stay readable.
+  // Quiet, warm-gray base so radar colors stand out: pale water, soft roads, faint borders.
+  function mutedBase() {
+    map.getStyle().layers.forEach(function (l) {
+      var id = l.id;
+      try {
+        if (l.type === 'background') map.setPaintProperty(id, 'background-color', '#e4e1dc');
+        else if (l.type === 'fill' && /water/.test(id)) map.setPaintProperty(id, 'fill-color', '#f6f7f8');
+        else if (l.type === 'fill' && /landcover|landuse|park|wood|grass/.test(id)) map.setPaintProperty(id, 'fill-color', '#dcd9d2');
+        else if (l.type === 'fill' && /building/.test(id)) map.setPaintProperty(id, 'fill-color', '#d6d2cb');
+        else if (l.type === 'line' && /water|river/.test(id)) map.setPaintProperty(id, 'line-color', '#f6f7f8');
+        else if (l.type === 'line' && /boundary|admin/.test(id)) map.setPaintProperty(id, 'line-color', '#aaa49a');
+        else if (l.type === 'line' && /road|highway|street|tunnel|bridge/.test(id)) {
+          map.setPaintProperty(id, 'line-color', '#f1efea');
+          map.setPaintProperty(id, 'line-opacity', 0.8);
+        }
+        else if (l.type === 'symbol') map.setPaintProperty(id, 'text-color', '#6b6760');
+      } catch (e) { /* layer without that property */ }
+    });
+  }
+
   function firstLabelLayer() {
     var layers = map.getStyle().layers || [];
     for (var i = 0; i < layers.length; i++) if (layers[i].type === 'symbol') return layers[i].id;
     return undefined;
   }
 
-  // host + list of {time, path} from RainViewer's weather-maps.json, oldest first.
-  function setFrames(host, list) {
+  function pad(n, w) { n = String(n); while (n.length < w) n = '0' + n; return n; }
+  function stamp(d) {
+    return d.getUTCFullYear() + pad(d.getUTCMonth() + 1, 2) + pad(d.getUTCDate(), 2) +
+      pad(d.getUTCHours(), 2) + pad(d.getUTCMinutes(), 2);
+  }
+
+  // Past hour of observed radar, "now", then up to 3 hours of HRRR forecast radar.
+  // hrrrInit: ISO time of the newest HRRR run (from the app), or null for observed-only.
+  function setTimeline(hrrrInit) {
     if (!map) return;
-    if (!ready) { pending = { host: host, list: list }; return; }
-    frames.forEach(function (_, k) {
-      if (map.getLayer('rv' + k)) map.removeLayer('rv' + k);
-      if (map.getSource('rv' + k)) map.removeSource('rv' + k);
+    if (!ready) { pendingInit = hrrrInit; return; }
+    var MIN = 60000, now = Date.now();
+    var list = [];
+    var base = Math.floor((now - 5 * MIN) / (5 * MIN)) * 5 * MIN;   // newest composite that should exist
+    for (var k = 6; k >= 1; k--) {
+      var t = base - k * 10 * MIN;
+      list.push({ t: t, kind: 'past', layer: 'ridge::USCOMP-N0Q-' + stamp(new Date(t)) });
+    }
+    list.push({ t: now, kind: 'now', layer: 'ridge::USCOMP-N0Q-0' });
+    var init = hrrrInit ? new Date(hrrrInit).getTime() : NaN;
+    if (isNaN(init)) hrrrInit = null;
+    if (hrrrInit) {
+      var first = Math.ceil((now + 10 * MIN) / (15 * MIN)) * 15 * MIN;
+      for (var v = first; v <= now + 180 * MIN; v += 15 * MIN) {
+        var f = Math.round((v - init) / MIN);
+        if (f < 0 || f > 1080) continue;
+        list.push({ t: v, kind: 'future', layer: 'hrrr::REFD-F' + pad(f, 4) + '-' + stamp(new Date(init)) });
+      }
+    }
+    frames.forEach(function (_, i) {
+      if (map.getLayer('rv' + i)) map.removeLayer('rv' + i);
+      if (map.getSource('rv' + i)) map.removeSource('rv' + i);
     });
-    frames = list || [];
+    frames = list;
+    nowIdx = frames.findIndex(function (f) { return f.kind === 'now'; });
     var before = firstLabelLayer();
-    frames.forEach(function (f, k) {
-      map.addSource('rv' + k, {
-        type: 'raster',
-        tiles: [host + f.path + '/256/{z}/{x}/{y}/2/1_1.png'],
-        tileSize: 256,
-        maxzoom: 7
+    frames.forEach(function (f, i) {
+      map.addSource('rv' + i, {
+        type: 'raster', tileSize: 256, maxzoom: 9,
+        tiles: [PROXY + '/iem/' + f.layer + '/{z}/{x}/{y}.png']
       });
-      // Near-zero opacity (not zero) keeps every frame's tiles loading in the background.
-      map.addLayer({
-        id: 'rv' + k, type: 'raster', source: 'rv' + k,
-        paint: { 'raster-opacity': 0.001, 'raster-fade-duration': 0 }
-      }, before);
+      map.addLayer({ id: 'rv' + i, type: 'raster', source: 'rv' + i,
+        paint: { 'raster-opacity': 0.001, 'raster-fade-duration': 0 } }, before);
     });
-    document.getElementById('slider').max = Math.max(0, frames.length - 1);
-    if (!frames.length) { showError('No radar frames available right now.'); return; }
-    show(frames.length - 1);
+    var slider = document.getElementById('slider');
+    slider.max = frames.length - 1;
+    drawTicks();
+    if (!hrrrInit) showError('Forecast radar is unavailable right now; showing observed radar only.');
+    idx = nowIdx;
+    show(nowIdx);
+  }
+
+  function drawTicks() {
+    var el = document.getElementById('ticks'); el.innerHTML = '';
+    var n = frames.length - 1; if (n <= 0) return;
+    frames.forEach(function (f, i) {
+      var label = null;
+      if (f.kind === 'now') label = 'Now';
+      else if (f.kind === 'past' && i === 0) label = '-1 hr';
+      else if (f.kind === 'future') {
+        var hrs = (f.t - frames[nowIdx].t) / 3600000;
+        if (Math.abs(hrs - Math.round(hrs)) < 0.13 && Math.round(hrs) >= 1) label = '+' + Math.round(hrs) + ' hr';
+      }
+      if (!label) return;
+      var s = document.createElement('span');
+      s.textContent = label; s.style.left = (i / n * 100) + '%';
+      if (f.kind === 'now') s.className = 'nowtick';
+      el.appendChild(s);
+    });
   }
 
   function show(i) {
@@ -132,35 +204,59 @@
     idx = i;
     map.setPaintProperty('rv' + i, 'raster-opacity', OPACITY);
     document.getElementById('slider').value = i;
-    var d = new Date(frames[i].time * 1000);
-    var label = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    var mins = Math.round((Date.now() / 1000 - frames[i].time) / 60);
-    document.getElementById('time').innerHTML = label +
-      '<span id="ago">' + (i === frames.length - 1 ? 'latest' : mins + ' min ago') + '</span>';
+    var f = frames[i];
+    var label = new Date(f.t).toLocaleTimeString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+    var kind = f.kind === 'now' ? 'Latest radar' : f.kind === 'past' ? 'Observed' : 'Forecast';
+    document.getElementById('time').innerHTML = label + '<span id="kind">' + kind + '</span>';
   }
 
   function play() {
     if (timer) { stop(); return; }
     if (!frames.length) return;
     document.getElementById('play').innerHTML = '&#10074;&#10074;';
-    timer = setInterval(function () { show(idx >= frames.length - 1 ? 0 : idx + 1); }, 600);
+    timer = setInterval(function () { show(idx >= frames.length - 1 ? 0 : idx + 1); }, 650);
   }
+  function stop() { clearInterval(timer); timer = null; document.getElementById('play').innerHTML = '&#9654;'; }
 
-  function stop() {
-    clearInterval(timer); timer = null;
-    document.getElementById('play').innerHTML = '&#9654;';
+  // Satellite imagery sits under the radar; labels switch to light text for contrast.
+  function setSatellite(on) {
+    if (!ready || on === satellite) return;
+    satellite = on;
+    document.getElementById('bSat').className = on ? 'on' : '';
+    document.getElementById('bMap').className = on ? '' : 'on';
+    var symbols = map.getStyle().layers.filter(function (l) { return l.type === 'symbol'; });
+    if (on) {
+      if (!map.getSource('sat')) {
+        map.addSource('sat', { type: 'raster', tileSize: 256, maxzoom: 18,
+          tiles: [PROXY + '/esri/{z}/{y}/{x}'], attribution: 'Imagery &copy; Esri' });
+      }
+      var before = map.getLayer('rv0') ? 'rv0' : firstLabelLayer();
+      map.addLayer({ id: 'sat', type: 'raster', source: 'sat' }, before);
+      symbols.forEach(function (l) {
+        try {
+          labelPaint[l.id] = [map.getPaintProperty(l.id, 'text-color'), map.getPaintProperty(l.id, 'text-halo-color')];
+          map.setPaintProperty(l.id, 'text-color', '#ffffff'); map.setPaintProperty(l.id, 'text-halo-color', 'rgba(0,0,0,0.7)'); } catch (e) {}
+      });
+    } else {
+      if (map.getLayer('sat')) map.removeLayer('sat');
+      symbols.forEach(function (l) {
+        var p = labelPaint[l.id]; if (!p) return;
+        try { map.setPaintProperty(l.id, 'text-color', p[0]); map.setPaintProperty(l.id, 'text-halo-color', p[1]); } catch (e) {}
+      });
+    }
   }
 
   function showError(msg) {
     var n = document.getElementById('note');
     n.textContent = msg; n.style.display = 'block';
-    document.getElementById('time').textContent = 'Radar unavailable';
+    setTimeout(function () { n.style.display = 'none'; }, 6000);
   }
 
   document.getElementById('play').addEventListener('click', play);
-  document.getElementById('slider').addEventListener('input', function (e) {
-    stop(); show(parseInt(e.target.value, 10));
-  });
+  document.getElementById('now').addEventListener('click', function () { stop(); show(nowIdx); });
+  document.getElementById('bMap').addEventListener('click', function () { setSatellite(false); });
+  document.getElementById('bSat').addEventListener('click', function () { setSatellite(true); });
+  document.getElementById('slider').addEventListener('input', function (e) { stop(); show(parseInt(e.target.value, 10)); });
 </script>
 </body>
 </html>
