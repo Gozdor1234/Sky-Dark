@@ -116,8 +116,7 @@ private fun precipNoun(type: String, peakMm: Double): String {
     val noun = when (type) {
         "snow" -> "snow"
         "sleet", "hail", "ice" -> "sleet"
-        "rain" -> "rain"
-        else -> "precipitation"
+        else -> "rain"   // unlabeled precipitation is almost always rain
     }
     return when {
         peakMm < 0.25 && noun == "rain" -> "drizzle"
