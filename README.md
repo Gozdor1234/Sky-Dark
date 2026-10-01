@@ -23,19 +23,6 @@
 - **The week in one view.** Seven days of highs, lows, and rain chances on a shared temperature scale; tap any day for its own hour-by-hour timeline.
 - **Built your way.** System, light, dark, and AMOLED black themes, plus an optional Modern style with glass panels and soft shadows.
 
-## 📸 Screenshots
-
-<table>
-  <tr>
-    <td align="center" colspan="3"><img src="docs/screenshots/app-icon.png" width="120" alt="Sky Dark app icon"><br><sub><b>App icon</b></sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/screenshots/forecast-modern-light.jpg" width="250" alt="Forecast in light mode with Modern style"><br><sub><b>Forecast, Modern style</b></sub></td>
-    <td align="center"><img src="docs/screenshots/forecast-dark.jpg" width="250" alt="Forecast in dark mode"><br><sub><b>Dark mode</b></sub></td>
-    <td align="center"><img src="docs/screenshots/rain-outlook-dark.jpg" width="250" alt="3-hour rain outlook and hourly chance of rain"><br><sub><b>3-hour rain outlook</b></sub></td>
-  </tr>
-</table>
-
 ## 🌦️ What's inside
 
 | | |
