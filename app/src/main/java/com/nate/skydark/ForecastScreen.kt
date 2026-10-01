@@ -246,15 +246,48 @@ private fun NextHour(f: Forecast) {
     val cs = MaterialTheme.colorScheme
     Panel {
         SectionTitle("Next hour")
-        Text(nextHourSummary(f.minutely, f.hourly, f.zone), fontSize = 17.sp, fontWeight = FontWeight.Medium)
-        if (f.minutely.size >= 2) {
-            PrecipGraph(f.minutely, Modifier.fillMaxWidth().height(100.dp))
+        // Summary and graph read the same blended minutes, so the words always match the picture.
+        val minutes = remember(f) { blendNextHour(f.minutely, f.hourly) }
+        Text(nextHourSummary(minutes, f.hourly, f.zone), fontSize = 17.sp, fontWeight = FontWeight.Medium)
+        if (minutes.size >= 2) {
+            PrecipGraph(minutes, Modifier.fillMaxWidth().height(100.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 listOf("Now", "10m", "20m", "30m", "40m", "50m", "60m").forEach {
                     Text(it, fontSize = 11.sp, color = cs.onSurfaceVariant)
                 }
             }
         }
+    }
+}
+
+/**
+ * Minute data for the graph, topped up with the hourly forecast. Pirate Weather's minute-by-minute
+ * numbers can be all zero while the hourly forecast still expects light rain later in the hour;
+ * the hourly values are spread across the minutes (linear between hour midpoints) and the larger
+ * of the two is drawn, so the graph shows what's coming rather than a flat line.
+ */
+private fun blendNextHour(m: List<Minute>, hours: List<Hour>): List<Minute> {
+    if (hours.isEmpty()) return m
+    val mids = hours.map { it.time + 1800 }
+    fun hourly(t: Long): Pair<Double, Double> {
+        val k = mids.indexOfFirst { it >= t }
+        fun mm(h: Hour) = if (h.mm.isNaN()) 0.0 else h.mm
+        fun pr(h: Hour) = if (h.prob.isNaN()) 0.0 else h.prob
+        return when (k) {
+            -1 -> mm(hours.last()) to pr(hours.last())
+            0 -> mm(hours[0]) to pr(hours[0])
+            else -> {
+                val a = hours[k - 1]
+                val b = hours[k]
+                val f = (t - mids[k - 1]).toDouble() / (mids[k] - mids[k - 1]).coerceAtLeast(1)
+                (mm(a) + (mm(b) - mm(a)) * f) to (pr(a) + (pr(b) - pr(a)) * f)
+            }
+        }
+    }
+    return m.map { p ->
+        val (hm, hp) = hourly(p.time)
+        val own = if (p.mm.isNaN()) 0.0 else p.mm
+        if (hm > own) p.copy(mm = hm, prob = hp) else p
     }
 }
 

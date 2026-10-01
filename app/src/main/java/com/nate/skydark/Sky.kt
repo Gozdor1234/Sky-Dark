@@ -143,7 +143,6 @@ fun nextHourSummary(m: List<Minute>, hours: List<Hour>, zone: ZoneId): String {
     if (m.isEmpty()) return laterLine(hours, zone) ?: "Minute-by-minute forecast isn't available here."
     fun typeOf(range: IntRange) = range.map { m[it].type }.firstOrNull { it.isNotBlank() } ?: "rain"
     fun peak(range: IntRange) = range.maxOf { m[it].mm.takeUnless { v -> v.isNaN() } ?: 0.0 }
-    fun chance(range: IntRange) = range.maxOf { m[it].prob.takeUnless { v -> v.isNaN() } ?: 0.0 }
 
     fun describe(flags: List<Boolean>, prefix: String, suffix: (IntRange) -> String): String? {
         if (flags[0]) {
@@ -162,10 +161,7 @@ fun nextHourSummary(m: List<Minute>, hours: List<Hour>, zone: ZoneId): String {
     }
 
     describe(m.map { minuteWet(it) }, "") { "" }?.let { return it }
-    describe(m.map { minutePossible(it) }, "possible ") { span ->
-        val c = (chance(span) * 100).roundToInt()
-        if (c > 0) " ($c% chance)" else ""
-    }?.let { return it }
+    describe(m.map { minutePossible(it) }, "possible ") { "" }?.let { return it }
     val later = laterLine(hours, zone)
     return if (later != null) "Dry for the hour. $later" else "No precipitation for the hour."
 }
@@ -176,7 +172,7 @@ private fun laterLine(hours: List<Hour>, zone: ZoneId): String? {
     val next = hours.filter { it.time > now }.take(4)
     val h = next.firstOrNull { hourWet(it.mm, it.prob) } ?: return null
     val noun = precipNoun(h.type.ifBlank { "rain" }, h.mm).cap()
-    return "$noun likely around ${hourLabel(h.time, zone)} (${(h.prob * 100).roundToInt()}% chance)."
+    return "$noun likely around ${hourLabel(h.time, zone)}."
 }
 
 // ---- Formatting ----
