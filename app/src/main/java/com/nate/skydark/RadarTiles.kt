@@ -52,37 +52,71 @@ object TileProxy {
         return WebResourceResponse(e.type, null, 200, "OK", headers, ByteArrayInputStream(e.bytes))
     }
 
+    // Upstream politeness and reliability: a few downloads at a time (a burst of dozens made the
+    // tile server drop some), one download per tile even if two callers ask, and retries on hiccups.
+    private val gate = java.util.concurrent.Semaphore(8)
+    private val locks = java.util.concurrent.ConcurrentHashMap<String, Any>()
+
     /** Returns the finished tile, from memory if fresh, otherwise downloaded (and re-painted for radar). */
     private fun fetch(path: String): Entry? {
-        memory.get(path)?.let { if (System.currentTimeMillis() - it.time < maxAgeMs(path)) return it }
+        fresh(path)?.let { return it }
+        val lock = locks.getOrPut(path) { Any() }
+        try {
+            synchronized(lock) {
+                fresh(path)?.let { return it }   // another caller just finished it
+                for (attempt in 0 until 3) {
+                    if (attempt > 0) Thread.sleep(400L * attempt * attempt)
+                    when (val r = download(path)) {
+                        is Entry -> { memory.put(path, r); return r }
+                        GONE -> return null          // a real 404: no point retrying
+                        else -> {}                   // timeout or server hiccup: try again
+                    }
+                }
+                return null
+            }
+        } finally {
+            locks.remove(path, lock)
+        }
+    }
+
+    private fun fresh(path: String): Entry? =
+        memory.get(path)?.takeIf { System.currentTimeMillis() - it.time < maxAgeMs(path) }
+
+    private val GONE = Any()
+    private val RETRY = Any()
+
+    private fun download(path: String): Any {
         val (prefix, base) = upstreams.first { path.startsWith(it.first) }
-        return try {
+        gate.acquire()
+        try {
             val conn = URL(base + path.removePrefix(prefix)).openConnection() as HttpURLConnection
-            conn.connectTimeout = 10_000
-            conn.readTimeout = 15_000
+            conn.connectTimeout = 8_000
+            conn.readTimeout = 12_000
             conn.useCaches = true
             conn.setRequestProperty("User-Agent", "SkyDark/1.0 (personal Android weather app)")
             try {
-                if (conn.responseCode != 200) return null
+                val code = conn.responseCode
+                if (code == 404) return GONE
+                if (code != 200) return RETRY
                 val bytes = conn.inputStream.use { it.readBytes() }
                 val type = conn.contentType?.substringBefore(';')?.trim() ?: "image/png"
-                val entry = if ((prefix == "/iem/" || prefix == "/iemv/") && type == "image/png") {
-                    // Radar tiles get re-rendered in the app's palette with the grid smoothed out.
+                if ((prefix == "/iem/" || prefix == "/iemv/") && type == "image/png") {
+                    // Radar tiles get re-rendered in the app's palette (or as intensity) with the grid smoothed out.
                     val parts = path.split('/')
                     val zoom = parts.getOrNull(parts.size - 3)?.toIntOrNull() ?: 7
-                    val styled = runCatching { RadarPaint.repaint(bytes, zoom, model = path.contains("hrrr::"), gray = prefix == "/iemv/") }.getOrNull()
-                    if (styled != null) Entry(styled, "image/png", System.currentTimeMillis())
-                    else Entry(bytes, type, System.currentTimeMillis())
-                } else {
-                    Entry(bytes, type, System.currentTimeMillis())
+                    val styled = runCatching {
+                        RadarPaint.repaint(bytes, zoom, model = path.contains("hrrr::"), gray = prefix == "/iemv/")
+                    }.getOrNull() ?: return RETRY   // a truncated download fails to decode
+                    return Entry(styled, "image/png", System.currentTimeMillis())
                 }
-                memory.put(path, entry)
-                entry
+                return Entry(bytes, type, System.currentTimeMillis())
             } finally {
                 conn.disconnect()
             }
         } catch (e: Exception) {
-            null
+            return RETRY
+        } finally {
+            gate.release()
         }
     }
 

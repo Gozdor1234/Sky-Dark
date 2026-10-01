@@ -251,27 +251,37 @@
     }
   }
 
+  // One tile as an ImageBitmap, retried a couple of times; null if it still fails.
+  function fetchTile(url, tries) {
+    return fetch(url)
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); })
+      .then(function (b) { return createImageBitmap(b); })
+      .catch(function () {
+        if (tries <= 1) return null;
+        return new Promise(function (res) { setTimeout(res, 700); }).then(function () { return fetchTile(url, tries - 1); });
+      });
+  }
+
+  function tileUrl(g, f, tx, ty, k) {
+    var n = 1 << g.z, wx = ((tx % n) + n) % n;
+    return TILE_HOSTS[k % TILE_HOSTS.length] + '/iemv/' + f.layer + '/' + g.z + '/' + wx + '/' + ty + '.png';
+  }
+
   function loadFrame(g, f) {
     g.data[f.layer] = 'loading';
     loading++;
     var canvas = document.createElement('canvas');
     canvas.width = g.W; canvas.height = g.H;
     var ctx = canvas.getContext('2d', { willReadFrequently: true });
-    var n = 1 << g.z, jobs = [], k = 0;
+    var jobs = [], missing = [], k = 0;
     for (var ty = g.y0; ty < g.y0 + g.ny; ty++) {
       for (var tx = g.x0; tx < g.x0 + g.nx; tx++) {
         (function (tx, ty) {
-          var wx = ((tx % n) + n) % n;
-          var url = TILE_HOSTS[(k++) % TILE_HOSTS.length] + '/iemv/' + f.layer + '/' + g.z + '/' + wx + '/' + ty + '.png';
-          jobs.push(fetch(url)
-            .then(function (r) { return r.ok ? r.blob() : null; })
-            .then(function (b) { return b ? createImageBitmap(b) : null; })
-            .then(function (img) {
-              if (!img) return;
-              ctx.drawImage(img, (tx - g.x0) * 256, (ty - g.y0) * 256);
-              if (img.close) img.close();
-            })
-            .catch(function () {}));
+          jobs.push(fetchTile(tileUrl(g, f, tx, ty, k++), 3).then(function (img) {
+            if (!img) { missing.push([tx, ty]); return; }
+            ctx.drawImage(img, (tx - g.x0) * 256, (ty - g.y0) * 256);
+            if (img.close) img.close();
+          }));
         })(tx, ty);
       }
     }
@@ -282,8 +292,36 @@
       var lum = new Uint8Array(g.W * g.H);
       for (var i = 0, j = 0; i < lum.length; i++, j += 4) lum[i] = px[j];
       g.data[f.layer] = lum;
+      // Tiles that still failed get another try in a few seconds, then patched in place.
+      if (missing.length) setTimeout(function () { patchFrame(g, f, missing, 1); }, 4000);
       frameLoaded(g);
       pump();
+    });
+  }
+
+  function patchFrame(g, f, tiles, round) {
+    if (g.retired || !(g.data[f.layer] instanceof Uint8Array)) return;
+    var still = [], one = document.createElement('canvas');
+    one.width = one.height = 256;
+    var c1 = one.getContext('2d', { willReadFrequently: true });
+    Promise.all(tiles.map(function (t, k) {
+      return fetchTile(tileUrl(g, f, t[0], t[1], k), 2).then(function (img) {
+        if (!img) { still.push(t); return; }
+        c1.clearRect(0, 0, 256, 256); c1.drawImage(img, 0, 0);
+        if (img.close) img.close();
+        var px = c1.getImageData(0, 0, 256, 256).data, lum = g.data[f.layer];
+        var ox = (t[0] - g.x0) * 256, oy = (t[1] - g.y0) * 256;
+        for (var y = 0; y < 256; y++) for (var x = 0; x < 256; x++) lum[(oy + y) * g.W + ox + x] = px[(y * 256 + x) * 4];
+      });
+    })).then(function () {
+      if (g.retired) return;
+      // Re-upload this frame and re-measure the motion that involves it.
+      g.stale = g.stale || {}; g.stale[f.layer] = true;
+      if (g.small) delete g.small[f.layer];
+      for (var key in g.flow) if (key.indexOf(f.layer) >= 0 && typeof g.flow[key] === 'object') { g.deadFlows = (g.deadFlows || []).concat([g.flow[key]]); delete g.flow[key]; }
+      requestFlows();
+      if (map) map.triggerRepaint();
+      if (still.length && round < 4) setTimeout(function () { patchFrame(g, f, still, round + 1); }, 6000 * round);
     });
   }
 
@@ -481,10 +519,15 @@
     // Frame textures are made on demand and only the last few are kept, to stay light on memory.
     frameTex: function (gl, g, f) {
       var t = g.tex[f.layer];
+      if (t && g.stale && g.stale[f.layer]) {
+        gl.deleteTexture(t); delete g.tex[f.layer]; t = null;
+        g.texOrder = g.texOrder.filter(function (l) { return l !== f.layer; });
+      }
+      if (g.stale) delete g.stale[f.layer];
       if (!t) {
         t = g.tex[f.layer] = this.texture(gl, gl.LUMINANCE, g.W, g.H, g.data[f.layer]);
         g.texOrder.push(f.layer);
-        while (g.texOrder.length > 6) {
+        while (g.texOrder.length > 10) {
           var old = g.texOrder.shift();
           if (g.tex[old]) { gl.deleteTexture(g.tex[old]); delete g.tex[old]; }
         }
@@ -505,6 +548,9 @@
         for (var k2 in old.flow) if (old.flow[k2] && old.flow[k2].tex) gl.deleteTexture(old.flow[k2].tex);
         old.tex = {}; old.data = {}; old.small = null;
       }
+      [grid, nextGrid].forEach(function (gg) {
+        if (gg && gg.deadFlows) { gg.deadFlows.forEach(function (fl) { if (fl.tex) gl.deleteTexture(fl.tex); }); gg.deadFlows = null; }
+      });
       var g = grid, pair = framesToDraw(g);
       if (!g || !pair) return;
       var n = 1 << g.z, x0 = g.x0 / n, x1 = (g.x0 + g.nx) / n, y0 = g.y0 / n, y1 = (g.y0 + g.ny) / n;
