@@ -28,13 +28,18 @@ fun WeatherIcon(
     modifier: Modifier = Modifier,
     bg: Color = MaterialTheme.colorScheme.surface,
 ) {
-    // Full-color glyphs: soft gray-blue clouds, warm moon, plus the sun/rain/snow/bolt accents.
     val dark = LocalLook.current.dark
+    Canvas(modifier) { drawWeatherIcon(icon, dark, bg) }
+}
+
+/** The weather glyph itself, usable from any DrawScope (the app screens and the home-screen widget). */
+fun DrawScope.drawWeatherIcon(icon: String, dark: Boolean, bg: Color) {
+    // Full-color glyphs: soft gray-blue clouds, warm moon, plus the sun/rain/snow/bolt accents.
     val tint = if (dark) Color(0xFFC3CCD8) else Color(0xFF8E9BAD)
     val moonColor = Color(0xFFF1D27A)
     val fogColor = if (dark) Color(0xFFA9B3C0) else Color(0xFF9AA5B3)
     val windColor = Color(0xFF5FAFC4)
-    Canvas(modifier) {
+    run {
         val s = size.minDimension
         translate((size.width - s) / 2f, (size.height - s) / 2f) {
             when (icon) {

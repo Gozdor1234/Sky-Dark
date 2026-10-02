@@ -270,7 +270,7 @@ private fun NextHour(f: Forecast) {
     }
 }
 
-private const val OUTLOOK_MIN = 180
+internal const val OUTLOOK_MIN = 180
 
 /** Labels spread evenly under the graph: first flush left, last flush right, the rest centered on their tick. */
 @Composable
@@ -299,7 +299,7 @@ private fun AxisLabels(labels: List<String>) {
  * (linear between hour midpoints). Taking the larger of the two keeps light hourly rain visible even
  * when the minute data reads zero.
  */
-private fun precipOutlook(m: List<Minute>, hours: List<Hour>, count: Int): List<Minute> {
+internal fun precipOutlook(m: List<Minute>, hours: List<Hour>, count: Int): List<Minute> {
     val start = m.firstOrNull()?.time ?: hours.firstOrNull()?.time?.coerceAtLeast(System.currentTimeMillis() / 1000)
         ?: return emptyList()
     if (hours.isEmpty()) return m

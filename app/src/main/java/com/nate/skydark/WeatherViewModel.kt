@@ -57,11 +57,13 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
     fun changeThemeMode(m: ThemeMode) {
         prefs.themeMode = m
         themeMode = m
+        SkyWidgets.render(getApplication<Application>())
     }
 
     fun changeModern(on: Boolean) {
         prefs.modern = on
         modern = on
+        SkyWidgets.render(getApplication<Application>())
     }
 
     fun saveApiKey(key: String) {
@@ -83,6 +85,7 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
 
     fun select(id: String) {
         prefs.selected = id
+        SkyWidgets.render(getApplication<Application>())
         selected = id
         forecast = null
         error = null
@@ -162,6 +165,7 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
                 error = null
                 RadarWarmup.warm(coords.first, coords.second)
                 prefs.putCache(key, now, json.toString())
+                SkyWidgets.render(getApplication<Application>())
             } catch (e: CancellationException) {
                 throw e
             } catch (e: HttpError) {
