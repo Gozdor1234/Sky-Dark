@@ -481,30 +481,34 @@ private fun Details(f: Forecast) {
     val today = f.daily.firstOrNull()
     val wind = if (c.wind.isNaN()) "--" else "${c.wind.roundToInt()} ${u.windUnit} ${compass(c.bearing)}".trim()
     val cells = buildList {
-        add("Wind" to wind)
-        if (!c.gust.isNaN()) add("Gusts" to "${c.gust.roundToInt()} ${u.windUnit}")
-        add("Humidity" to pct(c.humidity))
-        add("Dew Point" to deg(c.dewPoint))
-        add("UV Index" to (if (c.uv.isNaN()) "--" else "${c.uv.roundToInt()}"))
-        add("Visibility" to (if (c.visibility.isNaN()) "--" else "${c.visibility.roundToInt()} ${u.distUnit}"))
-        add("Pressure" to (if (c.pressure.isNaN()) "--" else "${c.pressure.roundToInt()} hPa"))
-        add("Cloud Cover" to pct(c.cloud))
+        add(Triple("Wind", wind, DetailIcon.WIND))
+        if (!c.gust.isNaN()) add(Triple("Gusts", "${c.gust.roundToInt()} ${u.windUnit}", DetailIcon.GUSTS))
+        add(Triple("Humidity", pct(c.humidity), DetailIcon.HUMIDITY))
+        add(Triple("Dew Point", deg(c.dewPoint), DetailIcon.DEW))
+        add(Triple("UV Index", if (c.uv.isNaN()) "--" else "${c.uv.roundToInt()}", DetailIcon.UV))
+        add(Triple("Visibility", if (c.visibility.isNaN()) "--" else "${c.visibility.roundToInt()} ${u.distUnit}", DetailIcon.VISIBILITY))
+        add(Triple("Pressure", if (c.pressure.isNaN()) "--" else "${c.pressure.roundToInt()} hPa", DetailIcon.PRESSURE))
+        add(Triple("Cloud Cover", pct(c.cloud), DetailIcon.CLOUD))
         if (today != null) {
-            add("Sunrise" to clockLabel(today.sunrise, f.zone))
-            add("Sunset" to clockLabel(today.sunset, f.zone))
+            add(Triple("Sunrise", clockLabel(today.sunrise, f.zone), DetailIcon.SUNRISE))
+            add(Triple("Sunset", clockLabel(today.sunset, f.zone), DetailIcon.SUNSET))
         }
         if (!c.stormDist.isNaN() && c.stormDist > 0) {
-            add("Nearest Storm" to "${c.stormDist.roundToInt()} ${u.distUnit} ${compass(c.stormBearing)}".trim())
+            add(Triple("Nearest Storm", "${c.stormDist.roundToInt()} ${u.distUnit} ${compass(c.stormBearing)}".trim(), DetailIcon.STORM))
         }
     }
     Panel {
         SectionTitle("Right now")
         cells.chunked(2).forEach { row ->
             Row(Modifier.fillMaxWidth()) {
-                row.forEach { (label, value) ->
-                    Column(Modifier.weight(1f).padding(vertical = 4.dp)) {
-                        Text(label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(value, fontSize = 17.sp, fontWeight = FontWeight.Medium)
+                row.forEach { (label, value, icon) ->
+                    Row(Modifier.weight(1f).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        DetailGlyph(icon, Modifier.size(24.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text(label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(value, fontSize = 17.sp, fontWeight = FontWeight.Medium)
+                        }
                     }
                 }
                 if (row.size == 1) Spacer(Modifier.weight(1f))
