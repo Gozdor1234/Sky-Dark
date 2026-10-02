@@ -162,6 +162,7 @@ fun ForecastScreen(
                 item {
                     Week(f, expandedDay, metric, onToggle = { expandedDay = if (expandedDay == it) -1 else it })
                 }
+                item { SunCard(f) }
                 item { Details(f) }
                 item { Credits() }
             } else if (vm.loading && vm.error == null) {
