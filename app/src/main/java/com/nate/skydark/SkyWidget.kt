@@ -85,11 +85,11 @@ object SkyWidgets {
             dark -> R.drawable.widget_bg_dark
             else -> R.drawable.widget_bg_light
         }
-        val text = if (dark) 0xFFE5E8ED.toInt() else 0xFF181C22.toInt()
-        val sub = if (dark) 0xFF9AA4B2.toInt() else 0xFF5B6472.toInt()
+        val text = if (dark) 0xFFE8ECF2.toInt() else 0xFF181C22.toInt()
+        val sub = if (dark) 0xFFBFC8D6.toInt() else 0xFF5B6472.toInt()
         val bgColor = when {
             amoled -> Color.Black
-            dark -> Color(0xFF171B22)
+            dark -> Color(0xFF232C3B)
             else -> Color(0xFFF3F5F8)
         }
 

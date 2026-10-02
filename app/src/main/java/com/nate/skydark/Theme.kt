@@ -32,17 +32,19 @@ private val Light = lightColorScheme(
     error = Color(0xFFC0392B),
 )
 
+// Dark mode: slate gray-blue (same family as Scoreology's dark theme) rather than near-black.
 private val Dark = darkColorScheme(
-    primary = Color(0xFF86B4FF),
+    primary = Color(0xFF8AB4F8),
     onPrimary = Color(0xFF0B1F44),
-    background = Color(0xFF0E1116),
-    onBackground = Color(0xFFE5E8ED),
-    surface = Color(0xFF171B22),
-    onSurface = Color(0xFFE5E8ED),
-    surfaceVariant = Color(0xFF232933),
-    onSurfaceVariant = Color(0xFF9AA4B2),
-    outlineVariant = Color(0xFF2E3541),
-    error = Color(0xFFFF7B6E),
+    background = Color(0xFF1B2230),
+    onBackground = Color(0xFFE8ECF2),
+    surface = Color(0xFF232C3B),
+    onSurface = Color(0xFFE8ECF2),
+    surfaceVariant = Color(0xFF354154),
+    onSurfaceVariant = Color(0xFFBFC8D6),
+    outline = Color(0xFF8A94A6),
+    outlineVariant = Color(0xFF3F4A5C),
+    error = Color(0xFFFF8A7E),
 )
 
 enum class ThemeMode(val key: String, val label: String) {

@@ -3,5 +3,5 @@
     <style name="Theme.SkyDark" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/window_bg</item>
     </style>
-    <color name="window_bg">#FF0E1116</color>
+    <color name="window_bg">#FF1B2230</color>
 </resources>
