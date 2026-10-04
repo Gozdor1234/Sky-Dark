@@ -1,9 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/w_root"
     android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Background: a white rounded shape, tinted and faded from Settings > Home screen widget -->
+    <ImageView
+        android:id="@+id/w_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:src="@drawable/widget_fill" />
+
+    <ImageView
+        android:id="@+id/w_edge"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:src="@drawable/widget_edge"
+        android:visibility="gone" />
+
+<LinearLayout
+    android:id="@+id/w_content"
+    android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/widget_bg_light"
     android:gravity="center_vertical"
     android:orientation="horizontal"
     android:paddingStart="14dp"
@@ -83,3 +105,4 @@
             android:textSize="13sp" />
     </LinearLayout>
 </LinearLayout>
+</FrameLayout>

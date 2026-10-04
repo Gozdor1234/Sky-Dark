@@ -60,6 +60,28 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
         SkyWidgets.render(getApplication<Application>())
     }
 
+    var widgetTone by mutableStateOf(prefs.widgetTone); private set
+    var widgetOpacity by mutableStateOf(prefs.widgetOpacity); private set
+
+    /** Opacity the widget actually uses: the saved value, or the style's default. */
+    fun effectiveWidgetOpacity(dark: Boolean): Int =
+        widgetOpacity.takeIf { it in 0..100 } ?: SkyWidgets.defaultOpacity(prefs, dark)
+
+    fun changeWidgetTone(tone: String) {
+        prefs.widgetTone = tone
+        widgetTone = tone
+        // A new tone starts from its own default opacity.
+        prefs.widgetOpacity = -1
+        widgetOpacity = -1
+        SkyWidgets.render(getApplication<Application>())
+    }
+
+    fun changeWidgetOpacity(percent: Int, redraw: Boolean) {
+        prefs.widgetOpacity = percent.coerceIn(0, 100)
+        widgetOpacity = prefs.widgetOpacity
+        if (redraw) SkyWidgets.render(getApplication<Application>())
+    }
+
     fun changeModern(on: Boolean) {
         prefs.modern = on
         modern = on

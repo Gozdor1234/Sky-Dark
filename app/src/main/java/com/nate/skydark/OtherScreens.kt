@@ -34,6 +34,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -52,6 +53,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 
 @Composable
 fun SubBar(title: String, onBack: () -> Unit) {
@@ -248,6 +250,34 @@ fun SettingsScreen(vm: WeatherViewModel, onBack: () -> Unit) {
                         }
                         Switch(checked = vm.modern, onCheckedChange = { vm.changeModern(it) })
                     }
+                }
+            }
+            item {
+                Panel {
+                    SectionTitle("Home screen widget")
+                    Text("Background", fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                    ChipRow {
+                        listOf("match" to "Match app", "dark" to "Dark", "light" to "Light").forEach { (key, label) ->
+                            Chip(label, vm.widgetTone == key) { vm.changeWidgetTone(key) }
+                        }
+                    }
+                    val opacity = vm.effectiveWidgetOpacity(LocalLook.current.dark)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Opacity", fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                        Text("$opacity%", fontSize = 15.sp, color = cs.onSurfaceVariant)
+                    }
+                    Slider(
+                        value = opacity.toFloat(),
+                        onValueChange = { vm.changeWidgetOpacity(it.roundToInt(), redraw = false) },
+                        onValueChangeFinished = { vm.changeWidgetOpacity(vm.widgetOpacity, redraw = true) },
+                        valueRange = 0f..100f,
+                        steps = 19,
+                    )
+                    Text(
+                        "Dark is a neutral charcoal like home screen folders; lower the opacity to let your wallpaper show through.",
+                        fontSize = 13.sp,
+                        color = cs.onSurfaceVariant,
+                    )
                 }
             }
             item {

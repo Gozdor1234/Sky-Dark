@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Bitmap
+import android.view.View
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Color
@@ -26,6 +27,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
+import kotlin.math.roundToInt
 
 /**
  * One-row home-screen widget: icon, current temperature, place and condition, the next-few-hours
@@ -76,25 +78,20 @@ object SkyWidgets {
             ThemeMode.SYSTEM -> (ctx.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         }
         val amoled = prefs.themeMode == ThemeMode.AMOLED
-        val glass = prefs.modern
-        val bgRes = when {
-            glass && amoled -> R.drawable.widget_bg_glass_amoled
-            glass && dark -> R.drawable.widget_bg_glass_dark
-            glass -> R.drawable.widget_bg_glass_light
-            amoled -> R.drawable.widget_bg_amoled
-            dark -> R.drawable.widget_bg_dark
-            else -> R.drawable.widget_bg_light
-        }
-        val text = if (dark) 0xFFE8ECF2.toInt() else 0xFF181C22.toInt()
-        val sub = if (dark) 0xFFBFC8D6.toInt() else 0xFF5B6472.toInt()
-        val bgColor = when {
-            amoled -> Color.Black
-            dark -> Color(0xFF232C3B)
-            else -> Color(0xFFF3F5F8)
-        }
+        val look = widgetLook(prefs, dark, amoled)
+        val text = if (look.darkText) 0xFF181C22.toInt() else 0xFFE8ECF2.toInt()
+        val sub = if (look.darkText) 0xFF5B6472.toInt() else 0xFFBFC8D6.toInt()
+        // Behind the icon: the solid color when the background is opaque, otherwise nothing.
+        val bgColor = if (look.alpha >= 0.95f) Color(look.color) else Color.Transparent
 
         val v = RemoteViews(ctx.packageName, R.layout.widget_sky)
-        v.setInt(R.id.w_root, "setBackgroundResource", bgRes)
+        v.setInt(R.id.w_bg, "setColorFilter", look.color)
+        v.setInt(R.id.w_bg, "setImageAlpha", (look.alpha * 255).roundToInt())
+        v.setViewVisibility(R.id.w_edge, if (look.edge) View.VISIBLE else View.GONE)
+        if (look.edge) {
+            v.setInt(R.id.w_edge, "setColorFilter", if (look.darkText) 0xFFFFFFFF.toInt() else 0x55FFFFFF)
+            v.setInt(R.id.w_edge, "setImageAlpha", if (look.darkText) 200 else 90)
+        }
         listOf(R.id.w_temp, R.id.w_title, R.id.w_high).forEach { v.setTextColor(it, text) }
         listOf(R.id.w_line, R.id.w_low).forEach { v.setTextColor(it, sub) }
 
@@ -130,13 +127,42 @@ object SkyWidgets {
         val rain = precipSummary(minutes, f.hourly, f.zone)
         val line = if (rain.startsWith("No precipitation") || rain.startsWith("Dry for")) headline(f.upcoming(24), f.zone) else rain
 
-        v.setImageViewBitmap(R.id.w_icon, iconBitmap(ctx, c.icon, dark, bgColor))
+        v.setImageViewBitmap(R.id.w_icon, iconBitmap(ctx, c.icon, !look.darkText, bgColor))
         v.setTextViewText(R.id.w_temp, deg(c.temp))
         v.setTextViewText(R.id.w_title, "$place · $condition")
         v.setTextViewText(R.id.w_line, line)
         v.setTextViewText(R.id.w_high, if (today != null) "H ${deg(today.high)}" else "")
         v.setTextViewText(R.id.w_low, if (today != null) "L ${deg(today.low)}" else "")
         return v
+    }
+
+    private class WidgetLook(val color: Int, val alpha: Float, val darkText: Boolean, val edge: Boolean)
+
+    /** Background color, opacity and text tone from Settings > Home screen widget. */
+    private fun widgetLook(prefs: Prefs, dark: Boolean, amoled: Boolean): WidgetLook {
+        val glass = prefs.modern
+        val custom = prefs.widgetOpacity.takeIf { it in 0..100 }?.let { it / 100f }
+        return when (prefs.widgetTone) {
+            // Neutral charcoal, like a launcher folder
+            "dark" -> WidgetLook(0xFF2B2D34.toInt(), custom ?: 0.6f, darkText = false, edge = false)
+            "light" -> WidgetLook(0xFFF3F5F8.toInt(), custom ?: 0.85f, darkText = true, edge = false)
+            else -> {
+                val color = when {
+                    amoled -> 0xFF000000.toInt()
+                    dark -> 0xFF232C3B.toInt()
+                    else -> 0xFFF3F5F8.toInt()
+                }
+                val def = if (glass) (if (dark) 0.6f else 0.7f) else 1f
+                WidgetLook(color, custom ?: def, darkText = !dark, edge = glass)
+            }
+        }
+    }
+
+    /** Default opacity (percent) for a tone, used to start the Settings slider. */
+    fun defaultOpacity(prefs: Prefs, dark: Boolean): Int = when (prefs.widgetTone) {
+        "dark" -> 60
+        "light" -> 85
+        else -> if (prefs.modern) (if (dark) 60 else 70) else 100
     }
 
     /** The app's own weather glyph, drawn into a bitmap (widgets can't run Compose). */

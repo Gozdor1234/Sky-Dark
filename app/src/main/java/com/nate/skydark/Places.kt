@@ -54,6 +54,16 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("modern_style", false)
         set(v) = sp.edit().putBoolean("modern_style", v).apply()
 
+    /** Home-screen widget background: "match" (follow the app's look), "dark" or "light". */
+    var widgetTone: String
+        get() = sp.getString("widget_tone", "match") ?: "match"
+        set(v) = sp.edit().putString("widget_tone", v).apply()
+
+    /** Widget background opacity 0-100, or -1 for the style's default. */
+    var widgetOpacity: Int
+        get() = sp.getInt("widget_opacity", -1)
+        set(v) = sp.edit().putInt("widget_opacity", v).apply()
+
     var selected: String
         get() = sp.getString("selected", GPS) ?: GPS
         set(v) = sp.edit().putString("selected", v).apply()
