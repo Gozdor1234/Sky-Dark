@@ -42,9 +42,7 @@ class SkyWidget : AppWidgetProvider() {
 
     override fun onEnabled(context: Context) = SkyWidgets.schedule(context)
 
-    override fun onDisabled(context: Context) {
-        WorkManager.getInstance(context).cancelUniqueWork(SkyWidgets.WORK)
-    }
+    override fun onDisabled(context: Context) = SkyWidgets.stopIfUnused(context)
 }
 
 object SkyWidgets {
@@ -53,9 +51,17 @@ object SkyWidgets {
     private fun ids(ctx: Context): IntArray =
         AppWidgetManager.getInstance(ctx).getAppWidgetIds(ComponentName(ctx, SkyWidget::class.java))
 
+    private fun squareIds(ctx: Context): IntArray =
+        AppWidgetManager.getInstance(ctx).getAppWidgetIds(ComponentName(ctx, SkySquareWidget::class.java))
+
+    /** Stops background refresh once no Sky Dark widget of either kind is left on the home screen. */
+    fun stopIfUnused(ctx: Context) {
+        if (ids(ctx).isEmpty() && squareIds(ctx).isEmpty()) WorkManager.getInstance(ctx).cancelUniqueWork(WORK)
+    }
+
     /** Background refresh every 30 minutes while a widget is on the home screen. */
     fun schedule(ctx: Context) {
-        if (ids(ctx).isEmpty()) return
+        if (ids(ctx).isEmpty() && squareIds(ctx).isEmpty()) return
         val req = PeriodicWorkRequestBuilder<WidgetRefreshWorker>(30, TimeUnit.MINUTES)
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .build()
@@ -65,9 +71,26 @@ object SkyWidgets {
     /** Redraws every widget from the forecast the app last saved. Cheap; safe to call often. */
     fun render(ctx: Context) {
         val all = ids(ctx)
-        if (all.isEmpty()) return
-        val views = build(ctx)
-        AppWidgetManager.getInstance(ctx).updateAppWidget(all, views)
+        if (all.isNotEmpty()) AppWidgetManager.getInstance(ctx).updateAppWidget(all, build(ctx))
+        val squares = squareIds(ctx)
+        if (squares.isNotEmpty()) AppWidgetManager.getInstance(ctx).updateAppWidget(squares, SkySquare.build(ctx))
+    }
+
+    /** Name shown for the selected place. */
+    fun placeName(prefs: Prefs): String =
+        if (prefs.selected == GPS) prefs.gpsPlace?.name ?: "Current Location"
+        else prefs.places.firstOrNull { it.id == prefs.selected }?.name ?: "Sky Dark"
+
+    /** The forecast the app last saved for the selected place, or null. */
+    fun savedForecast(prefs: Prefs): Forecast? {
+        val (time, json) = prefs.cache("${prefs.selected}|${prefs.units.code}") ?: return null
+        return runCatching { PirateWeather.parse(JSONObject(json), prefs.units, time) }.getOrNull()
+    }
+
+    /** Opens the app; shared by both widgets. */
+    fun openApp(ctx: Context): PendingIntent {
+        val open = Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        return PendingIntent.getActivity(ctx, 0, open, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
     private fun build(ctx: Context): RemoteViews {
@@ -166,9 +189,9 @@ object SkyWidgets {
     }
 
     /** The app's own weather glyph, drawn into a bitmap (widgets can't run Compose). */
-    private fun iconBitmap(ctx: Context, icon: String, dark: Boolean, bg: Color): Bitmap {
+    fun iconBitmap(ctx: Context, icon: String, dark: Boolean, bg: Color, sizeDp: Int = 40): Bitmap {
         val dm = ctx.resources.displayMetrics
-        val px = (40 * dm.density).toInt().coerceAtLeast(48)
+        val px = (sizeDp * dm.density).toInt().coerceAtLeast(32)
         val img = ImageBitmap(px, px)
         CanvasDrawScope().draw(Density(dm.density), LayoutDirection.Ltr, Canvas(img), Size(px.toFloat(), px.toFloat())) {
             drawWeatherIcon(icon, dark, bg)

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Square widget background: snow, cool steel blue -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient android:angle="315" android:startColor="#FF5D7FA6" android:endColor="#FF9DB6D2" />
+    <corners android:radius="24dp" />
+</shape>

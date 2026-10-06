@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Sky Dark</string>
+    <string name="widget_square_description">Current conditions and four days, on a sky that matches the weather outside</string>
     <string name="widget_description">Current conditions and the next few hours, in one row</string>
 </resources>

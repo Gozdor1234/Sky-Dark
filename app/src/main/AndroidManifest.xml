@@ -36,5 +36,18 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/sky_widget_info" />
         </receiver>
+
+        <!-- Square forecast widget with a sky that follows the current conditions -->
+        <receiver
+            android:name=".SkySquareWidget"
+            android:exported="false"
+            android:label="Sky Dark forecast">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/sky_square_widget_info" />
+        </receiver>
     </application>
 </manifest>
