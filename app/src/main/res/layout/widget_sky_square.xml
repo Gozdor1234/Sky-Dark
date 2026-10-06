@@ -100,10 +100,12 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal">
 
-            <View
+            <!-- Spacer (plain View isn't allowed in home-screen widgets) -->
+            <TextView
                 android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textSize="11sp" />
 
             <TextView
                 android:layout_width="48dp"
