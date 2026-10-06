@@ -72,8 +72,16 @@ object SkyWidgets {
     fun render(ctx: Context) {
         val all = ids(ctx)
         if (all.isNotEmpty()) AppWidgetManager.getInstance(ctx).updateAppWidget(all, build(ctx))
-        val squares = squareIds(ctx)
-        if (squares.isNotEmpty()) AppWidgetManager.getInstance(ctx).updateAppWidget(squares, SkySquare.build(ctx))
+        // Square widgets are drawn one by one, each for its own size.
+        val mgr = AppWidgetManager.getInstance(ctx)
+        squareIds(ctx).forEach { id ->
+            val o = mgr.getAppWidgetOptions(id)
+            // Portrait home screens report the usable height as the max height.
+            val h = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT).takeIf { it > 0 }
+                ?: o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT).takeIf { it > 0 } ?: 250
+            val w = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH).takeIf { it > 0 } ?: 250
+            mgr.updateAppWidget(id, SkySquare.build(ctx, SkySquare.rowsFor(h), w))
+        }
     }
 
     /** Name shown for the selected place. */

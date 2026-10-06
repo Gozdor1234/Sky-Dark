@@ -95,6 +95,35 @@
             android:textSize="13sp" />
 
         <LinearLayout
+            android:id="@+id/s_cols"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
+            <TextView
+                android:layout_width="48dp"
+                android:layout_height="wrap_content"
+                android:gravity="end"
+                android:text="High"
+                android:textColor="#B3FFFFFF"
+                android:textSize="11sp" />
+
+            <TextView
+                android:layout_width="44dp"
+                android:layout_height="wrap_content"
+                android:gravity="end"
+                android:text="Low"
+                android:textColor="#B3FFFFFF"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/d0_row"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
@@ -117,21 +146,9 @@
                 android:layout_width="24dp"
                 android:layout_height="24dp"
                 android:importantForAccessibility="no" />
-
-            <TextView
-                android:id="@+id/d0_lo"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:gravity="end"
-                android:maxLines="1"
-                android:text=""
-                android:textColor="#CCFFFFFF"
-                android:textSize="15sp" />
-
             <TextView
                 android:id="@+id/d0_hi"
-                android:layout_width="44dp"
+                android:layout_width="48dp"
                 android:layout_height="wrap_content"
                 android:gravity="end"
                 android:maxLines="1"
@@ -139,8 +156,18 @@
                 android:textColor="#FFFFFFFF"
                 android:textSize="15sp"
                 android:textStyle="bold" />
+            <TextView
+                android:id="@+id/d0_lo"
+                android:layout_width="44dp"
+                android:layout_height="wrap_content"
+                android:gravity="end"
+                android:maxLines="1"
+                android:text=""
+                android:textColor="#CCFFFFFF"
+                android:textSize="15sp" />
         </LinearLayout>
         <LinearLayout
+            android:id="@+id/d1_row"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
@@ -163,21 +190,9 @@
                 android:layout_width="24dp"
                 android:layout_height="24dp"
                 android:importantForAccessibility="no" />
-
-            <TextView
-                android:id="@+id/d1_lo"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:gravity="end"
-                android:maxLines="1"
-                android:text=""
-                android:textColor="#CCFFFFFF"
-                android:textSize="15sp" />
-
             <TextView
                 android:id="@+id/d1_hi"
-                android:layout_width="44dp"
+                android:layout_width="48dp"
                 android:layout_height="wrap_content"
                 android:gravity="end"
                 android:maxLines="1"
@@ -185,8 +200,18 @@
                 android:textColor="#FFFFFFFF"
                 android:textSize="15sp"
                 android:textStyle="bold" />
+            <TextView
+                android:id="@+id/d1_lo"
+                android:layout_width="44dp"
+                android:layout_height="wrap_content"
+                android:gravity="end"
+                android:maxLines="1"
+                android:text=""
+                android:textColor="#CCFFFFFF"
+                android:textSize="15sp" />
         </LinearLayout>
         <LinearLayout
+            android:id="@+id/d2_row"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
@@ -209,21 +234,9 @@
                 android:layout_width="24dp"
                 android:layout_height="24dp"
                 android:importantForAccessibility="no" />
-
-            <TextView
-                android:id="@+id/d2_lo"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:gravity="end"
-                android:maxLines="1"
-                android:text=""
-                android:textColor="#CCFFFFFF"
-                android:textSize="15sp" />
-
             <TextView
                 android:id="@+id/d2_hi"
-                android:layout_width="44dp"
+                android:layout_width="48dp"
                 android:layout_height="wrap_content"
                 android:gravity="end"
                 android:maxLines="1"
@@ -231,8 +244,18 @@
                 android:textColor="#FFFFFFFF"
                 android:textSize="15sp"
                 android:textStyle="bold" />
+            <TextView
+                android:id="@+id/d2_lo"
+                android:layout_width="44dp"
+                android:layout_height="wrap_content"
+                android:gravity="end"
+                android:maxLines="1"
+                android:text=""
+                android:textColor="#CCFFFFFF"
+                android:textSize="15sp" />
         </LinearLayout>
         <LinearLayout
+            android:id="@+id/d3_row"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
@@ -255,21 +278,9 @@
                 android:layout_width="24dp"
                 android:layout_height="24dp"
                 android:importantForAccessibility="no" />
-
-            <TextView
-                android:id="@+id/d3_lo"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:gravity="end"
-                android:maxLines="1"
-                android:text=""
-                android:textColor="#CCFFFFFF"
-                android:textSize="15sp" />
-
             <TextView
                 android:id="@+id/d3_hi"
-                android:layout_width="44dp"
+                android:layout_width="48dp"
                 android:layout_height="wrap_content"
                 android:gravity="end"
                 android:maxLines="1"
@@ -277,6 +288,15 @@
                 android:textColor="#FFFFFFFF"
                 android:textSize="15sp"
                 android:textStyle="bold" />
+            <TextView
+                android:id="@+id/d3_lo"
+                android:layout_width="44dp"
+                android:layout_height="wrap_content"
+                android:gravity="end"
+                android:maxLines="1"
+                android:text=""
+                android:textColor="#CCFFFFFF"
+                android:textSize="15sp" />
         </LinearLayout>
     </LinearLayout>
 </FrameLayout>

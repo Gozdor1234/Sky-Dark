@@ -3,6 +3,9 @@ package com.nate.skydark
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
+import android.os.Bundle
+import android.util.TypedValue
+import android.view.View
 import android.widget.RemoteViews
 import androidx.compose.ui.graphics.Color
 
@@ -13,12 +16,18 @@ class SkySquareWidget : AppWidgetProvider() {
         SkyWidgets.schedule(context)
     }
 
+    // Redraw when resized, so the number of forecast days fits the new size.
+    override fun onAppWidgetOptionsChanged(context: Context, manager: AppWidgetManager, id: Int, options: Bundle) =
+        SkyWidgets.render(context)
+
     override fun onEnabled(context: Context) = SkyWidgets.schedule(context)
 
     override fun onDisabled(context: Context) = SkyWidgets.stopIfUnused(context)
 }
 
 object SkySquare {
+    private val rowIds = listOf(R.id.d0_row, R.id.d1_row, R.id.d2_row, R.id.d3_row)
+
     private val dayIds = listOf(
         intArrayOf(R.id.d0_name, R.id.d0_icon, R.id.d0_lo, R.id.d0_hi),
         intArrayOf(R.id.d1_name, R.id.d1_icon, R.id.d1_lo, R.id.d1_hi),
@@ -26,7 +35,13 @@ object SkySquare {
         intArrayOf(R.id.d3_name, R.id.d3_icon, R.id.d3_lo, R.id.d3_hi),
     )
 
-    fun build(ctx: Context): RemoteViews {
+    /**
+     * Forecast rows that fit a widget [heightDp] tall: the header (place, temperature, condition)
+     * takes about 120 dp, and each day row about 30 dp. A 2x2 widget shows the header and one or two days.
+     */
+    fun rowsFor(heightDp: Int): Int = ((heightDp - 128) / 30).coerceIn(0, 4)
+
+    fun build(ctx: Context, rows: Int = 4, widthDp: Int = 250): RemoteViews {
         val prefs = Prefs(ctx)
         val v = RemoteViews(ctx.packageName, R.layout.widget_sky_square)
         v.setOnClickPendingIntent(R.id.s_root, SkyWidgets.openApp(ctx))
@@ -37,6 +52,8 @@ object SkySquare {
             v.setImageViewResource(R.id.s_bg, R.drawable.sky_cloudy_day)
             v.setTextViewText(R.id.s_temp, "--°")
             v.setTextViewText(R.id.s_cond, if (prefs.apiKey.isBlank()) "Open Sky Dark to add your API key" else "Open Sky Dark to load the forecast")
+            rowIds.forEach { v.setViewVisibility(it, View.GONE) }
+            v.setViewVisibility(R.id.s_cols, View.GONE)
             return v
         }
 
@@ -47,13 +64,19 @@ object SkySquare {
         prefs.widgetOpacity.takeIf { it in 0..100 }?.let { v.setInt(R.id.s_bg, "setImageAlpha", it * 255 / 100) }
 
         v.setTextViewText(R.id.s_temp, deg(c.temp))
+        // Narrow (2 columns): smaller temperature and no icon beside it, so the high/low still fits.
+        val narrow = widthDp < 200
+        v.setTextViewTextSize(R.id.s_temp, TypedValue.COMPLEX_UNIT_SP, if (narrow) 38f else 48f)
+        v.setViewVisibility(R.id.s_icon, if (narrow) View.GONE else View.VISIBLE)
         v.setImageViewBitmap(R.id.s_icon, SkyWidgets.iconBitmap(ctx, c.icon, true, Color.Transparent, 34))
-        v.setTextViewText(R.id.s_hi, if (today != null) deg(today.high) else "")
-        v.setTextViewText(R.id.s_lo, if (today != null) deg(today.low) else "")
+        v.setTextViewText(R.id.s_hi, if (today != null) "H ${deg(today.high)}" else "")
+        v.setTextViewText(R.id.s_lo, if (today != null) "L ${deg(today.low)}" else "")
         v.setTextViewText(R.id.s_cond, c.summary.ifBlank { c.sky().label })
 
-        // The next four days (tomorrow onward)
+        // The next days (tomorrow onward), as many as fit; the High/Low labels only when there are rows.
         val days = f.daily.drop(1).take(4)
+        rowIds.forEachIndexed { i, id -> v.setViewVisibility(id, if (i < rows) View.VISIBLE else View.GONE) }
+        v.setViewVisibility(R.id.s_cols, if (rows > 0) View.VISIBLE else View.GONE)
         dayIds.forEachIndexed { i, ids ->
             val d = days.getOrNull(i)
             v.setTextViewText(ids[0], d?.let { dowLabel(it.time, f.zone) } ?: "")
