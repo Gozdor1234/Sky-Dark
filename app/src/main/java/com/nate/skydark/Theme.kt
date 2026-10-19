@@ -1,6 +1,7 @@
 package com.nate.skydark
 
 import android.graphics.Color as AndroidColor
+import android.os.Build
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
@@ -13,11 +14,14 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 
 private val Light = lightColorScheme(
     primary = Color(0xFF2E6BD1),
@@ -72,40 +76,134 @@ private fun ColorScheme.toAmoled(): ColorScheme = copy(
     outlineVariant = Color(0xFF242424),
 )
 
+/** Matching phone colors (Material You) needs Android 12 or newer. */
+val supportsPhoneColors: Boolean get() = Build.VERSION.SDK_INT >= 31
+
+/**
+ * Phone palette in dark mode: keep the phone's accent and text tints, but on the app's slate
+ * gray-blue page and cards (same approach as Scoreology), so dark mode doesn't turn muddy.
+ */
+private fun ColorScheme.toSlate(): ColorScheme = copy(
+    background = Dark.background,
+    surface = Dark.surface,
+    surfaceVariant = Dark.surfaceVariant,
+    onSurfaceVariant = Dark.onSurfaceVariant,
+    outline = Dark.outline,
+    outlineVariant = Dark.outlineVariant,
+)
+
+/** Phone palette in light mode: a lightly tinted page with near-white cards, like the default look. */
+private fun ColorScheme.toLightCards(): ColorScheme = copy(background = surfaceContainer, surface = surfaceContainerLowest)
+
+/** Colors outside Material's scheme: custom bottom bar and custom card color (used by Modern's glass). */
+@Immutable
+data class ExtraColors(val bar: Color? = null, val cards: Color? = null)
+
+val LocalExtraColors = staticCompositionLocalOf { ExtraColors() }
+
+/**
+ * Layers the user's custom colors over the theme. Anything not customized keeps the theme's
+ * color, except where that would break readability (text on a new background, text on buttons),
+ * which is derived automatically.
+ */
+private fun ColorScheme.withCustom(c: Map<ColorSlot, Int>, modern: Boolean): ColorScheme {
+    if (c.isEmpty()) return this
+    var s = this
+    c[ColorSlot.Background]?.let { bg ->
+        // Cards follow the new page: a step lighter (or darker on light pages), or the same tone for glass.
+        val card = if (modern) bg else ColorMath.elevate(bg, 0.07f)
+        s = s.copy(
+            background = Color(bg),
+            surface = Color(card),
+            surfaceVariant = Color(ColorMath.elevate(bg, 0.16f)),
+            surfaceContainer = Color(ColorMath.elevate(bg, 0.07f)),
+            surfaceContainerHigh = Color(ColorMath.elevate(bg, 0.10f)),
+            surfaceContainerHighest = Color(ColorMath.elevate(bg, 0.13f)),
+        )
+        // If text wasn't customized and no longer reads on this background, switch it to black or white.
+        if (ColorSlot.Text !in c && ColorMath.contrast(s.onSurface.toArgb(), bg) < 4.5) {
+            val on = ColorMath.onColorFor(bg)
+            s = s.copy(onBackground = Color(on), onSurface = Color(on))
+            if (ColorSlot.SubText !in c) s = s.copy(onSurfaceVariant = Color(ColorMath.mix(on, bg, 0.3f)))
+        }
+    }
+    c[ColorSlot.Cards]?.let { card ->
+        if (!modern) s = s.copy(surface = Color(card))
+        s = s.copy(surfaceVariant = Color(ColorMath.elevate(card, 0.08f)))
+    }
+    c[ColorSlot.Accent]?.let { a ->
+        val container = ColorMath.mix(a, s.background.toArgb(), 0.65f)
+        s = s.copy(
+            primary = Color(a), onPrimary = Color(ColorMath.onColorFor(a)), surfaceTint = Color(a),
+            primaryContainer = Color(container), onPrimaryContainer = Color(ColorMath.onColorFor(container)),
+            secondaryContainer = Color(container), onSecondaryContainer = Color(ColorMath.onColorFor(container)),
+        )
+    }
+    c[ColorSlot.Text]?.let { t -> s = s.copy(onBackground = Color(t), onSurface = Color(t)) }
+    c[ColorSlot.SubText]?.let { t -> s = s.copy(onSurfaceVariant = Color(t)) }
+    c[ColorSlot.Lines]?.let { l -> s = s.copy(outline = Color(l), outlineVariant = Color(l)) }
+    return s
+}
+
 @Composable
-fun SkyTheme(mode: ThemeMode, modern: Boolean, content: @Composable () -> Unit) {
+fun SkyTheme(
+    mode: ThemeMode,
+    modern: Boolean,
+    phoneColors: Boolean = false,
+    custom: Map<ColorSlot, Int> = emptyMap(),
+    content: @Composable () -> Unit,
+) {
+    val ctx = LocalContext.current
     val dark = when (mode) {
         ThemeMode.LIGHT -> false
         ThemeMode.DARK, ThemeMode.AMOLED -> true
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
     }
     val amoled = mode == ThemeMode.AMOLED
-    var scheme = if (dark) Dark else Light
+    val usePhone = phoneColors && supportsPhoneColors
+    var scheme = when {
+        usePhone && dark -> dynamicDarkColorScheme(ctx).toSlate()
+        usePhone -> dynamicLightColorScheme(ctx).toLightCards()
+        dark -> Dark
+        else -> Light
+    }
     if (amoled) scheme = scheme.toAmoled()
     // Glass panels need the page and the panel to share one tone so shadows and highlights read.
     if (modern) {
         val page = when {
             amoled -> Color.Black
             dark -> scheme.background
+            // With phone colors, keep their hue but shade the page slightly so glass edges stay visible.
+            usePhone -> Color(ColorMath.mix(scheme.background.toArgb(), 0xFF1E3A64.toInt(), 0.07f))
             else -> ModernLightBackground
         }
         scheme = scheme.copy(background = page, surface = page)
     }
+    scheme = scheme.withCustom(custom, modern)
+    val extra = ExtraColors(
+        bar = custom[ColorSlot.Bars]?.let { Color(it) },
+        cards = custom[ColorSlot.Cards]?.let { Color(it) },
+    )
 
-    // Status and navigation bar icons follow the app's own mode, not just the phone's.
-    val activity = LocalContext.current as? ComponentActivity
-    LaunchedEffect(dark, activity) {
+    // Light or dark now follows the actual page color, so a custom light page in dark mode
+    // gets dark icons, dark status bar icons and the light map.
+    val pageDark = ColorMath.isDark(scheme.background.toArgb())
+
+    // Status and navigation bar icons follow the app's own colors, not just the phone's.
+    val activity = ctx as? ComponentActivity
+    LaunchedEffect(pageDark, activity) {
         activity?.enableEdgeToEdge(
-            statusBarStyle = if (dark) SystemBarStyle.dark(AndroidColor.TRANSPARENT)
+            statusBarStyle = if (pageDark) SystemBarStyle.dark(AndroidColor.TRANSPARENT)
             else SystemBarStyle.light(AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT),
-            navigationBarStyle = if (dark) SystemBarStyle.dark(AndroidColor.TRANSPARENT)
+            navigationBarStyle = if (pageDark) SystemBarStyle.dark(AndroidColor.TRANSPARENT)
             else SystemBarStyle.light(AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT),
         )
     }
 
     CompositionLocalProvider(
-        LocalLook provides Look(dark, amoled, modern),
+        LocalLook provides Look(pageDark, amoled && pageDark, modern),
         LocalModern provides modern,
+        LocalExtraColors provides extra,
     ) {
         MaterialTheme(colorScheme = scheme, content = content)
     }

@@ -26,6 +26,10 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.NavigationBarItemColors
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Text
 import androidx.compose.material3.Surface
@@ -55,7 +59,12 @@ class MainActivity : ComponentActivity() {
         }
         enableEdgeToEdge()
         setContent {
-            SkyTheme(vm.themeMode, vm.modern) { App(vm) }
+            SkyTheme(
+                vm.themeMode,
+                vm.modern,
+                phoneColors = vm.matchPhoneColors,
+                custom = if (vm.customColorsOn) vm.customColors else emptyMap(),
+            ) { App(vm) }
         }
     }
 }
@@ -114,7 +123,8 @@ private fun BottomBar(current: Screen, onSelect: (Screen) -> Unit) {
     )
     if (LocalModern.current) {
         // Floating raised glass bar with the selected tab pressed in.
-        val p = modernPalette
+        val bar = LocalExtraColors.current.bar
+        val p = modernPalette.let { if (bar != null) it.copy(glass = bar.copy(alpha = 0.92f)) else it }
         val cs = MaterialTheme.colorScheme
         Row(
             Modifier
@@ -137,7 +147,12 @@ private fun BottomBar(current: Screen, onSelect: (Screen) -> Unit) {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    val tint = if (sel) cs.primary else cs.onSurfaceVariant
+                    val onBar = bar?.let { Color(ColorMath.onColorFor(it.toArgb())) }
+                    val tint = when {
+                        sel -> if (bar != null && onBar != null && ColorMath.contrast(cs.primary.toArgb(), bar.toArgb()) < 3.0) onBar else cs.primary
+                        onBar != null -> onBar.copy(alpha = 0.7f)
+                        else -> cs.onSurfaceVariant
+                    }
                     Icon(painterResource(icon), contentDescription = null, tint = tint)
                     Text(label, fontSize = 12.sp, fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium, color = tint)
                 }
@@ -145,7 +160,7 @@ private fun BottomBar(current: Screen, onSelect: (Screen) -> Unit) {
         }
     } else {
         NavigationBar(
-            containerColor = MaterialTheme.colorScheme.surface,
+            containerColor = LocalExtraColors.current.bar ?: MaterialTheme.colorScheme.surface,
             tonalElevation = 0.dp,
             windowInsets = WindowInsets(0, 0, 0, 0),
         ) {
@@ -155,8 +170,21 @@ private fun BottomBar(current: Screen, onSelect: (Screen) -> Unit) {
                     onClick = { onSelect(tab) },
                     icon = { Icon(painterResource(icon), contentDescription = null) },
                     label = { Text(label) },
+                    colors = barItemColors(),
                 )
             }
         }
     }
+}
+
+/** On a custom bar color, labels switch to black or white (whichever reads) so they stay legible. */
+@Composable
+private fun barItemColors(): NavigationBarItemColors {
+    val bar = LocalExtraColors.current.bar ?: return NavigationBarItemDefaults.colors()
+    val on = Color(ColorMath.onColorFor(bar.toArgb()))
+    return NavigationBarItemDefaults.colors(
+        selectedTextColor = on,
+        unselectedIconColor = on.copy(alpha = 0.7f),
+        unselectedTextColor = on.copy(alpha = 0.7f),
+    )
 }

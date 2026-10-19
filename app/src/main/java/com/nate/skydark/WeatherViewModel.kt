@@ -82,6 +82,34 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
         if (redraw) SkyWidgets.render(getApplication<Application>())
     }
 
+    var matchPhoneColors by mutableStateOf(prefs.matchPhoneColors); private set
+    var customColorsOn by mutableStateOf(prefs.customColorsOn); private set
+    var customColors by mutableStateOf(prefs.customColors); private set
+
+    fun changeMatchPhoneColors(on: Boolean) {
+        prefs.matchPhoneColors = on
+        matchPhoneColors = on
+    }
+
+    fun changeCustomColorsOn(on: Boolean) {
+        prefs.customColorsOn = on
+        customColorsOn = on
+        SkyWidgets.render(getApplication<Application>())
+    }
+
+    /** Sets one area's color, or null to go back to the theme's color. */
+    fun changeCustomColor(slot: ColorSlot, argb: Int?) {
+        prefs.setCustomColor(slot, argb)
+        customColors = if (argb == null) customColors - slot else customColors + (slot to argb)
+        SkyWidgets.render(getApplication<Application>())
+    }
+
+    fun resetCustomColors() {
+        prefs.clearCustomColors()
+        customColors = emptyMap()
+        SkyWidgets.render(getApplication<Application>())
+    }
+
     fun changeModern(on: Boolean) {
         prefs.modern = on
         modern = on

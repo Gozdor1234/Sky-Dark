@@ -42,6 +42,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -187,6 +192,42 @@ fun SettingsScreen(vm: WeatherViewModel, onBack: () -> Unit) {
     val keyboard = LocalSoftwareKeyboardController.current
     val cs = MaterialTheme.colorScheme
     val ctx = LocalContext.current
+    var editing by remember { mutableStateOf<ColorSlot?>(null) }
+
+    // What each area looks like right now (theme color, or the custom one), for swatches and checks.
+    val extra = LocalExtraColors.current
+    val cardColor = extra.cards ?: cs.surface
+    val shown: Map<ColorSlot, Color> = mapOf(
+        ColorSlot.Background to cs.background,
+        ColorSlot.Cards to cardColor,
+        ColorSlot.Accent to cs.primary,
+        ColorSlot.Text to cs.onSurface,
+        ColorSlot.SubText to cs.onSurfaceVariant,
+        ColorSlot.Lines to cs.outlineVariant,
+        ColorSlot.Bars to (extra.bar ?: cs.surface),
+    )
+    val issues = if (!vm.customColorsOn) emptyList() else ContrastCheck.issues(
+        listOf(
+            Triple("Main text on Background", cs.onSurface.toArgb() to cs.background.toArgb(), 4.5),
+            Triple("Main text on Cards", cs.onSurface.toArgb() to cardColor.toArgb(), 4.5),
+            Triple("Secondary text on Cards", cs.onSurfaceVariant.toArgb() to cardColor.toArgb(), 3.0),
+            Triple("Accent on Background", cs.primary.toArgb() to cs.background.toArgb(), 3.0),
+        ),
+    )
+
+    editing?.let { slot ->
+        // key(): a fresh picker (and fresh starting color) for each area.
+        key(slot) {
+            ColorPickerDialog(
+                title = slot.label,
+                initial = (shown[slot] ?: Color.Gray).toArgb(),
+                isCustom = slot in vm.customColors,
+                onApply = { vm.changeCustomColor(slot, it); editing = null },
+                onReset = { vm.changeCustomColor(slot, null); editing = null },
+                onDismiss = { editing = null },
+            )
+        }
+    }
 
     Column(Modifier.fillMaxSize().imePadding()) {
         SubBar("Settings", onBack)
@@ -250,6 +291,42 @@ fun SettingsScreen(vm: WeatherViewModel, onBack: () -> Unit) {
                         }
                         Switch(checked = vm.modern, onCheckedChange = { vm.changeModern(it) })
                     }
+                    SwitchRow(
+                        "Match my phone's colors",
+                        if (supportsPhoneColors) "Uses the color palette from your phone's wallpaper and style settings. Turn off for the app's own colors."
+                        else "Matching phone colors needs Android 12 or newer.",
+                        vm.matchPhoneColors && supportsPhoneColors,
+                        enabled = supportsPhoneColors,
+                    ) { vm.changeMatchPhoneColors(it) }
+                }
+            }
+            item {
+                Panel {
+                    SectionTitle("Custom colors")
+                    SwitchRow(
+                        "Use custom colors",
+                        "Pick your own color for each part of the app. Custom colors sit on top of the theme above; " +
+                            "anything left on Default keeps the theme's color. Turning this off keeps your picks for later.",
+                        vm.customColorsOn,
+                    ) { vm.changeCustomColorsOn(it) }
+                    if (vm.customColorsOn) {
+                        ColorSlot.entries.forEach { slot ->
+                            ColorSlotRow(slot, shown[slot] ?: Color.Gray, isCustom = slot in vm.customColors) { editing = slot }
+                        }
+                        if (issues.isNotEmpty()) {
+                            Text("Hard to read", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = cs.error)
+                            issues.forEach { i ->
+                                Text(
+                                    "${i.message}: contrast ${"%.1f".format(i.ratio)}:1 (aim for at least 4.5:1 for text)",
+                                    fontSize = 12.sp,
+                                    color = cs.error,
+                                )
+                            }
+                        }
+                        if (vm.customColors.isNotEmpty()) {
+                            TextButton(onClick = { vm.resetCustomColors() }) { Text("Reset all colors to default") }
+                        }
+                    }
                 }
             }
             item {
@@ -308,6 +385,23 @@ fun SettingsScreen(vm: WeatherViewModel, onBack: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SwitchRow(title: String, hint: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+    val cs = MaterialTheme.colorScheme
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+            .clickable(enabled = enabled) { onChange(!checked) }.padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = if (enabled) cs.onSurface else cs.onSurfaceVariant)
+            Text(hint, fontSize = 13.sp, color = cs.onSurfaceVariant)
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
     }
 }
 

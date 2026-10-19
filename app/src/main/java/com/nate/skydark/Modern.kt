@@ -47,7 +47,8 @@ data class ModernPalette(
 val modernPalette: ModernPalette
     @Composable @ReadOnlyComposable get() {
         val bg = MaterialTheme.colorScheme.background
-        return if (bg.luminance() < 0.3f) {
+        val cards = LocalExtraColors.current.cards
+        val p = if (bg.luminance() < 0.3f) {
             ModernPalette(
                 base = bg,
                 glass = Color.White.copy(alpha = 0.06f),
@@ -68,6 +69,8 @@ val modernPalette: ModernPalette
                 ambient = Color(0xFF1E3A64).copy(alpha = 0.10f),
             )
         }
+        // A custom card color fills the glass panels (kept slightly see-through so they still read as glass).
+        return if (cards != null) p.copy(glass = cards.copy(alpha = 0.92f)) else p
     }
 
 /** Light page color used by Modern in light mode (unless a custom background is set). */

@@ -64,6 +64,33 @@ class Prefs(ctx: Context) {
         get() = sp.getInt("widget_opacity", -1)
         set(v) = sp.edit().putInt("widget_opacity", v).apply()
 
+    /** Use the phone's wallpaper-based palette (Android 12+). */
+    var matchPhoneColors: Boolean
+        get() = sp.getBoolean("match_phone_colors", false)
+        set(v) = sp.edit().putBoolean("match_phone_colors", v).apply()
+
+    /** Master switch for the custom palette. Picks are kept when it's off. */
+    var customColorsOn: Boolean
+        get() = sp.getBoolean("custom_colors_on", false)
+        set(v) = sp.edit().putBoolean("custom_colors_on", v).apply()
+
+    /** ARGB per ColorSlot; a missing slot means "use the theme's color". */
+    val customColors: Map<ColorSlot, Int>
+        get() = ColorSlot.entries.filter { sp.contains("custom_color_" + it.key) }
+            .associateWith { sp.getInt("custom_color_" + it.key, 0) }
+
+    fun setCustomColor(slot: ColorSlot, argb: Int?) {
+        val e = sp.edit()
+        if (argb == null) e.remove("custom_color_" + slot.key) else e.putInt("custom_color_" + slot.key, argb)
+        e.apply()
+    }
+
+    fun clearCustomColors() {
+        val e = sp.edit()
+        ColorSlot.entries.forEach { e.remove("custom_color_" + it.key) }
+        e.apply()
+    }
+
     var selected: String
         get() = sp.getString("selected", GPS) ?: GPS
         set(v) = sp.edit().putString("selected", v).apply()

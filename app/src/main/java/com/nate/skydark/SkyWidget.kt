@@ -178,13 +178,17 @@ object SkyWidgets {
             "dark" -> WidgetLook(0xFF2B2D34.toInt(), custom ?: 0.6f, darkText = false, edge = false)
             "light" -> WidgetLook(0xFFF3F5F8.toInt(), custom ?: 0.85f, darkText = true, edge = false)
             else -> {
+                // Custom colors from Settings: the card color, else the page color.
+                val picked = if (prefs.customColorsOn) prefs.customColors.let { it[ColorSlot.Cards] ?: it[ColorSlot.Background] } else null
                 val color = when {
+                    picked != null -> picked
                     amoled -> 0xFF000000.toInt()
                     dark -> 0xFF232C3B.toInt()
                     else -> 0xFFF3F5F8.toInt()
                 }
-                val def = if (glass) (if (dark) 0.6f else 0.7f) else 1f
-                WidgetLook(color, custom ?: def, darkText = !dark, edge = glass)
+                val darkPage = if (picked != null) ColorMath.isDark(picked) else dark
+                val def = if (glass) (if (darkPage) 0.6f else 0.7f) else 1f
+                WidgetLook(color, custom ?: def, darkText = !darkPage, edge = glass)
             }
         }
     }
