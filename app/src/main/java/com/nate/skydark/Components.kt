@@ -313,7 +313,7 @@ fun MiniTempTimeline(points: List<Pair<String, Double>>, units: Units, modifier:
     val hi = maxOf(ok.maxOrNull() ?: 1.0, lo + 6.0)
     Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         points.forEach { (label, v) ->
-            Row(Modifier.fillMaxWidth().height(22.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().height(20.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     label,
                     modifier = Modifier.width(38.dp),
