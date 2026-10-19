@@ -298,3 +298,53 @@ fun SectionTitle(text: String) {
 fun SmallIcon(icon: String, size: Int = 26) {
     WeatherIcon(icon, Modifier.size(size.dp))
 }
+
+/**
+ * Compact version of the 24-hour temperature timeline for the header: Now plus the next three
+ * hours, each a time label and a tinted pill whose position tracks the temperature.
+ */
+@Composable
+fun MiniTempTimeline(points: List<Pair<String, Double>>, units: Units, modifier: Modifier = Modifier) {
+    if (points.isEmpty()) return
+    val cs = MaterialTheme.colorScheme
+    val ok = points.map { it.second }.filter { !it.isNaN() }
+    val lo = ok.minOrNull() ?: 0.0
+    // At least a 6-degree span, so a 1-degree change doesn't swing the pills across the track.
+    val hi = maxOf(ok.maxOrNull() ?: 1.0, lo + 6.0)
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        points.forEach { (label, v) ->
+            Row(Modifier.fillMaxWidth().height(22.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    label,
+                    modifier = Modifier.width(38.dp),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    color = cs.onSurfaceVariant,
+                )
+                BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
+                    val pillW = 42.dp
+                    val track = (maxWidth - pillW).coerceAtLeast(0.dp)
+                    val frac = if (v.isNaN()) 0f else ((v - lo) / (hi - lo)).toFloat().coerceIn(0f, 1f)
+                    Box(
+                        Modifier
+                            .align(Alignment.CenterStart)
+                            .width(track * frac + 8.dp)
+                            .height(1.dp)
+                            .background(cs.outlineVariant),
+                    )
+                    Box(Modifier.offset(x = track * frac).width(pillW).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                        Box(
+                            Modifier
+                                .clip(CircleShape)
+                                .background(SkyColors.temp(toFahrenheit(v, units)).copy(alpha = 0.25f))
+                                .padding(horizontal = 7.dp, vertical = 2.dp),
+                        ) {
+                            Text(deg(v), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, color = cs.onSurface)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -216,6 +216,10 @@ private fun Hero(f: Forecast) {
                 Text(deg(c.temp), fontSize = 68.sp, lineHeight = 70.sp, fontFamily = TempFont, fontWeight = FontWeight.SemiBold, letterSpacing = (-1).sp)
                 Text("Feels ${deg(c.feels)}", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = cs.onSurfaceVariant)
             }
+            Spacer(Modifier.width(16.dp))
+            // Now (the current reading, matching the big number) plus the next three hours.
+            val next = f.upcoming(4).drop(1).map { hourLabel(it.time, f.zone) to it.temp }
+            MiniTempTimeline(listOf("Now" to c.temp) + next, f.units, Modifier.weight(1f))
         }
         Text(c.summary.ifBlank { c.sky().label }, fontSize = 18.sp, fontWeight = FontWeight.Medium)
         if (today != null) {
