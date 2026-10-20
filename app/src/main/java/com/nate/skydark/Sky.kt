@@ -130,7 +130,7 @@ private fun precipNoun(type: String, peakMm: Double): String {
 private fun String.cap() = replaceFirstChar { it.titlecase(Locale.getDefault()) }
 
 /** A trace the model thinks is plausible, even if not likely: shown as "possible". */
-private fun minutePossible(m: Minute): Boolean =
+internal fun minutePossible(m: Minute): Boolean =
     !m.mm.isNaN() && m.mm >= 0.02 && (m.prob.isNaN() || m.prob >= 0.15)
 
 /** "12 min", "1 hr", "1 hr 35 min" (rounded to 5 min past the first hour). */

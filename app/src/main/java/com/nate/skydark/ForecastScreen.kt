@@ -150,7 +150,8 @@ fun ForecastScreen(
             if (f != null) {
                 item { Hero(f) }
                 items(f.alerts) { AlertCard(it, f) }
-                item { NextHour(f) }
+                // Only shown while rain or snow is expected in the next 3 hours; otherwise Next 24 hours moves up.
+                if (precipComing(f)) item { NextHour(f) }
                 item {
                     Panel {
                         SectionTitle("Next 24 hours")
@@ -280,6 +281,10 @@ private fun NextHour(f: Forecast) {
 }
 
 internal const val OUTLOOK_MIN = 180
+
+/** True when any minute in the next 3 hours has precipitation (likely or possible). */
+private fun precipComing(f: Forecast): Boolean =
+    precipOutlook(f.minutely, f.hourly, OUTLOOK_MIN).any { minuteWet(it) || minutePossible(it) }
 
 /** Labels spread evenly under the graph: first flush left, last flush right, the rest centered on their tick. */
 @Composable
