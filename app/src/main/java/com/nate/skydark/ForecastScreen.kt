@@ -156,7 +156,11 @@ fun ForecastScreen(
                         SectionTitle("Next 24 hours")
                         MetricChips(metric) { metric = it }
                         Spacer(Modifier.height(2.dp))
-                        Timeline(f.upcoming(24), f.zone, f.units, metric, startsNow = true)
+                        // The Now row shows the current conditions (same as the top), not the forecast for the hour that began earlier.
+                        val hours = f.upcoming(24).let { h ->
+                            if (h.isEmpty()) h else listOf(f.current.copy(time = h[0].time)) + h.drop(1)
+                        }
+                        Timeline(hours, f.zone, f.units, metric, startsNow = true)
                     }
                 }
                 item {
